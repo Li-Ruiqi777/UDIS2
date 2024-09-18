@@ -65,7 +65,7 @@ def H2Mesh(H, rigid_mesh):
 
     return mesh
 
-# get rigid mesh
+# 生成网格的各控制点坐标,其形状为 : [batch_size, grid_h + 1, grid_w + 1, 2]
 def get_rigid_mesh(batch_size, height, width):
 
     ww = torch.matmul(torch.ones([grid_h+1, 1]), torch.unsqueeze(torch.linspace(0., float(width), grid_w+1), 0))
@@ -305,11 +305,11 @@ def build_output_model(net, input1_tensor, input2_tensor):
     # solve homo using DLT
     H = torch_DLT.tensor_DLT(src_p, dst_p)
 
-
     rigid_mesh = get_rigid_mesh(batch_size, img_h, img_w)
-    ini_mesh = H2Mesh(H, rigid_mesh)
+    ini_mesh = H2Mesh(H, rigid_mesh) # 使用H对网格上各控制点施加一个初始的偏移
     mesh = ini_mesh + mesh_motion
 
+    # 计算网格中各控制点的坐标范围
     width_max = torch.max(mesh[...,0])
     width_max = torch.maximum(torch.tensor(img_w).cuda(), width_max)
     width_min = torch.min(mesh[...,0])
@@ -325,9 +325,11 @@ def build_output_model(net, input1_tensor, input2_tensor):
     #print(out_height)
 
     # get warped img1
+    # 缩放矩阵
     M_tensor = torch.tensor([[out_width / 2.0, 0., out_width / 2.0],
                       [0., out_height / 2.0, out_height / 2.0],
                       [0., 0., 1.]])
+    # 归一化矩阵
     N_tensor = torch.tensor([[img_w / 2.0, 0., img_w / 2.0],
                       [0., img_h / 2.0, img_h / 2.0],
                       [0., 0., 1.]])
@@ -336,6 +338,7 @@ def build_output_model(net, input1_tensor, input2_tensor):
         N_tensor = N_tensor.cuda()
     N_tensor_inv = torch.inverse(N_tensor)
 
+    # 平移矩阵
     I_ = torch.tensor([[1., 0., width_min],
                       [0., 1., height_min],
                       [0., 0., 1.]])#.unsqueeze(0)
@@ -343,8 +346,9 @@ def build_output_model(net, input1_tensor, input2_tensor):
     if torch.cuda.is_available():
         I_ = I_.cuda()
         mask = mask.cuda()
+    
+    # 最终的齐次变化矩阵
     I_mat = torch.matmul(torch.matmul(N_tensor_inv, I_), M_tensor).unsqueeze(0)
-
     homo_output = torch_homo_transform.transformer(torch.cat((input1_tensor+1, mask), 1), I_mat, (out_height.int(), out_width.int()))
 
     torch.cuda.empty_cache()
@@ -360,14 +364,13 @@ def build_output_model(net, input1_tensor, input2_tensor):
 
     return out_dict
 
-
-
 # define and forward
 class Network(nn.Module):
 
     def __init__(self):
         super(Network, self).__init__()
 
+        # H的计算
         self.regressNet1_part1 = nn.Sequential(
             nn.Conv2d(2, 64, kernel_size=3, padding=1, bias=False),
             nn.ReLU(inplace=True),
@@ -398,7 +401,7 @@ class Network(nn.Module):
             nn.Linear(in_features=1024, out_features=8, bias=True)
         )
 
-
+        # TPS的计算
         self.regressNet2_part1 = nn.Sequential(
             nn.Conv2d(2, 64, kernel_size=3, padding=1, bias=False),
             nn.ReLU(inplace=True),
@@ -433,7 +436,6 @@ class Network(nn.Module):
             nn.ReLU(inplace=True),
 
             nn.Linear(in_features=2048, out_features=(grid_w+1)*(grid_h+1)*2, bias=True)
-
         )
 
 
@@ -471,33 +473,36 @@ class Network(nn.Module):
 
         return feature_extractor_stage1, feature_extractor_stage2
 
-    # forward
+    # 返回H中4点的偏移以及TPS中各控制点的偏移
     def forward(self, input1_tesnor, input2_tesnor):
         batch_size, _, img_h, img_w = input1_tesnor.size()
 
-        feature_1_64 = self.feature_extractor_stage1(input1_tesnor)
-        feature_1_32 = self.feature_extractor_stage2(feature_1_64)
-        feature_2_64 = self.feature_extractor_stage1(input2_tesnor)
-        feature_2_32 = self.feature_extractor_stage2(feature_2_64)
+        feature_1_64 = self.feature_extractor_stage1(input1_tesnor) # refrence的1/8
+        feature_1_32 = self.feature_extractor_stage2(feature_1_64)  # refrence的1/16
+
+        feature_2_64 = self.feature_extractor_stage1(input2_tesnor) # target的1/8
+        feature_2_32 = self.feature_extractor_stage2(feature_2_64)  # target的1/16
 
         ######### stage 1
         correlation_32 = self.CCL(feature_1_32, feature_2_32)
         temp_1 = self.regressNet1_part1(correlation_32)
         temp_1 = temp_1.view(temp_1.size()[0], -1)
         offset_1 = self.regressNet1_part2(temp_1)
-        H_motion_1 = offset_1.reshape(-1, 4, 2)
+        H_motion_1 = offset_1.reshape(-1, 4, 2) # 计算4-pt的偏移量
 
 
         src_p = torch.tensor([[0., 0.], [img_w, 0.], [0., img_h], [img_w, img_h]])
         if torch.cuda.is_available():
             src_p = src_p.cuda()
         src_p = src_p.unsqueeze(0).expand(batch_size, -1, -1)
-        dst_p = src_p + H_motion_1
-        H = torch_DLT.tensor_DLT(src_p/8, dst_p/8)
+        dst_p = src_p + H_motion_1 # 将偏移施加到点上
+        H = torch_DLT.tensor_DLT(src_p/8, dst_p/8) # 由DLT计算H
 
-        M_tensor = torch.tensor([[img_w/8 / 2.0, 0., img_w/8 / 2.0],
-                      [0., img_h/8 / 2.0, img_h/8 / 2.0],
-                      [0., 0., 1.]])
+        M_tensor = torch.tensor([
+            [img_w/8 / 2.0, 0., img_w/8 / 2.0],
+            [0., img_h/8 / 2.0, img_h/8 / 2.0],
+            [0., 0., 1.]
+        ])
 
         if torch.cuda.is_available():
             M_tensor = M_tensor.cuda()
@@ -507,14 +512,14 @@ class Network(nn.Module):
         M_tile_inv = M_tensor_inv.unsqueeze(0).expand(batch_size, -1, -1)
         H_mat = torch.matmul(torch.matmul(M_tile_inv, H), M_tile)
 
+        # 将全局的单应性变换H施加到target上
         warp_feature_2_64 = torch_homo_transform.transformer(feature_2_64, H_mat, (int(img_h/8), int(img_w/8)))
 
         ######### stage 2
         correlation_64 = self.CCL(feature_1_64, warp_feature_2_64)
         temp_2 = self.regressNet2_part1(correlation_64)
         temp_2 = temp_2.view(temp_2.size()[0], -1)
-        offset_2 = self.regressNet2_part2(temp_2)
-
+        offset_2 = self.regressNet2_part2(temp_2) # 计算TPS中各控制点的偏移
 
         return offset_1, offset_2
 
@@ -526,7 +531,7 @@ class Network(nn.Module):
         all_patches = x.unfold(1, kernel, stride).unfold(2, kernel, stride)
         return all_patches
 
-
+    # Context Correlation Layer
     def CCL(self, feature_1, feature_2):
         bs, c, h, w = feature_1.size()
 

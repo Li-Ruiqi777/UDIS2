@@ -1,0 +1,5 @@
+*.pyc
+*.pth
+*.jpg
+/ave_fusion
+/testimg

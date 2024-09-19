@@ -3,3 +3,5 @@
 *.jpg
 /ave_fusion
 /testimg
+.black
+/.idea

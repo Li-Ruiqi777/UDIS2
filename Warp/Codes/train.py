@@ -9,13 +9,16 @@ from dataset import TrainDataset
 import glob
 from loss import cal_lp_loss, inter_grid_loss, intra_grid_loss
 
-
+# 获取当前脚本上一级目录的绝对路径
 last_path = os.path.abspath(os.path.join(os.path.dirname("__file__"), os.path.pardir))
+
 # path to save the summary files
 SUMMARY_DIR = os.path.join(last_path, "summary")
 writer = SummaryWriter(log_dir=SUMMARY_DIR)
+
 # path to save the model files
 MODEL_DIR = os.path.join(last_path, "model")
+
 # create folders if it dose not exist
 if not os.path.exists(MODEL_DIR):
     os.makedirs(MODEL_DIR)
@@ -195,7 +198,9 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--max_epoch", type=int, default=100)
     parser.add_argument(
-        "--train_path", type=str, default="/opt/data/private/nl/Data/UDIS-D/training/"
+        "--train_path",
+        type=str,
+        default="E:/DeepLearning/0_DataSets/UDIS-D/training/training/",
     )
 
     # parse the arguments

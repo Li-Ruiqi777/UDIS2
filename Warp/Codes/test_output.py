@@ -1,6 +1,6 @@
-'''
+"""
 在UDIS-D数据集上进行测试并保存结果图片和mask
-'''
+"""
 
 import argparse
 import torch

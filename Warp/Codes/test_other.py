@@ -25,7 +25,9 @@ resize_512 = T.Resize((512, 512))
 
 
 def loadSingleData(data_path, img1_name, img2_name):
-
+    """
+    将图片中的像素归一化到[-1,1],并转成tensor
+    """
     # load image1
     input1 = cv2.imread(data_path + img1_name)
     input1 = input1.astype(dtype=np.float32)
@@ -242,10 +244,10 @@ if __name__ == "__main__":
     parser.add_argument("--gpu", type=str, default="0")
     parser.add_argument("--max_iter", type=int, default=100)
     parser.add_argument(
-        "--path", type=str, default="E:/DeepLearning/7_Stitch/UDIS2/testimg/"
+        "--path", type=str, default="E:/DeepLearning/7_Stitch/UDIS2/Carpark-DHW/"
     )
-    parser.add_argument("--img1_name", type=str, default="input1.bmp")
-    parser.add_argument("--img2_name", type=str, default="input2.bmp")
+    parser.add_argument("--img1_name", type=str, default="input1.jpg")
+    parser.add_argument("--img2_name", type=str, default="input2.jpg")
 
     # nl: parse the arguments
     args = parser.parse_args()

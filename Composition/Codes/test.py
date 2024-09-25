@@ -9,8 +9,7 @@ import numpy as np
 import cv2
 
 
-last_path = os.path.abspath(os.path.join(os.path.dirname("__file__"), os.path.pardir))
-MODEL_DIR = os.path.join(last_path, "model")
+MODEL_DIR = "E:/DeepLearning/7_Stitch/UDIS2/Warp/model"
 
 
 def test(args):
@@ -39,19 +38,19 @@ def test(args):
     if len(ckpt_list) != 0:
         model_path = ckpt_list[-1]
         checkpoint = torch.load(model_path)
-        net.load_state_dict(checkpoint["model"])
+        net.load_state_dict(checkpoint["model"],False)
         print("load model from {}!".format(model_path))
     else:
         print("No checkpoint found!")
         return
 
-    path_learn_mask1 = "../learn_mask1/"
+    path_learn_mask1 = "E:/DeepLearning/7_Stitch/UDIS2/learn_mask1/"
     if not os.path.exists(path_learn_mask1):
         os.makedirs(path_learn_mask1)
-    path_learn_mask2 = "../learn_mask2/"
+    path_learn_mask2 = "E:/DeepLearning/7_Stitch/UDIS2/learn_mask2/"
     if not os.path.exists(path_learn_mask2):
         os.makedirs(path_learn_mask2)
-    path_final_composition = "../composition/"
+    path_final_composition = "E:/DeepLearning/7_Stitch/UDIS2/composition_output/"
     if not os.path.exists(path_final_composition):
         os.makedirs(path_final_composition)
 
@@ -59,6 +58,7 @@ def test(args):
     net.eval()
     for i, batch_value in enumerate(test_loader):
 
+        # 数据集加载进来的是warp后的图像
         warp1_tensor = batch_value[0].float()
         warp2_tensor = batch_value[1].float()
         mask1_tensor = batch_value[2].float()
@@ -95,8 +95,10 @@ def test(args):
 
         path = path_learn_mask1 + str(i + 1).zfill(6) + ".jpg"
         cv2.imwrite(path, learned_mask1)
+
         path = path_learn_mask2 + str(i + 1).zfill(6) + ".jpg"
         cv2.imwrite(path, learned_mask2)
+
         path = path_final_composition + str(i + 1).zfill(6) + ".jpg"
         cv2.imwrite(path, stitched_image)
 
@@ -110,7 +112,9 @@ if __name__ == "__main__":
     parser.add_argument("--gpu", type=str, default="0")
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument(
-        "--test_path", type=str, default="/opt/data/private/nl/Data/UDIS-D/testing/"
+        "--test_path",
+        type=str,
+        default="E:/DeepLearning/0_DataSets/UDIS-D/testing/testing/",
     )
 
     print("<==================== Loading data ===================>\n")

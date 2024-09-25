@@ -91,7 +91,7 @@ def test(args):
     test_loader = DataLoader(
         dataset=test_data,
         batch_size=args.batch_size,
-        num_workers=1,
+        num_workers=2,
         shuffle=False,
         drop_last=False,
     )
@@ -184,14 +184,14 @@ def test(args):
         path = path_mask2 + str(i + 1).zfill(6) + ".jpg"
         cv2.imwrite(path, final_warp2_mask * 255)
 
-        # 加权融合warp结果
-        ave_fusion = final_warp1 * (final_warp1 / (final_warp1 + final_warp2 + 1e-6))
-        +final_warp2 * (final_warp2 / (final_warp1 + final_warp2 + 1e-6))
+        # 加权融合ref和tar的warp结果
+        ave_fusion = (final_warp1 * (final_warp1 / (final_warp1 + final_warp2 + 1e-6)))+(final_warp2 * (final_warp2 / (final_warp1 + final_warp2 + 1e-6)))
 
         path = path_ave_fusion + str(i + 1).zfill(6) + ".jpg"
         cv2.imwrite(path, ave_fusion)
 
         print("i = {}".format(i + 1))
+
 
         torch.cuda.empty_cache()
 
@@ -203,7 +203,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--gpu", type=str, default="0")
-    parser.add_argument("--batch_size", type=int, default=1)
+    parser.add_argument("--batch_size", type=int, default=4)
 
     # /opt/data/private/nl/Data/UDIS-D/testing/  or  /opt/data/private/nl/Data/UDIS-D/training/
     parser.add_argument(

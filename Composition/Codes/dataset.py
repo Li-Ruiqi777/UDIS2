@@ -15,7 +15,7 @@ class TrainDataset(Dataset):
 
         datas = glob.glob(os.path.join(self.train_path, "*"))
         for data in sorted(datas):
-            data_name = data.split("/")[-1]
+            data_name = data.split("\\")[-1]
             if (
                 data_name == "warp1"
                 or data_name == "warp2"
@@ -83,7 +83,7 @@ class TestDataset(Dataset):
 
         datas = glob.glob(os.path.join(self.test_path, "*"))
         for data in sorted(datas):
-            data_name = data.split("/")[-1]
+            data_name = data.split("\\")[-1]
             if (
                 data_name == "warp1"
                 or data_name == "warp2"

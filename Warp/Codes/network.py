@@ -78,6 +78,9 @@ def draw_mesh_on_warp(warp, f_local):
 
 # Covert global homo into mesh
 def H2Mesh(H, rigid_mesh):
+    '''
+    将前一步单应性矩阵带来的初始偏移施加到控制点上
+    '''
 
     H_inv = torch.inverse(H)
     ori_pt = rigid_mesh.reshape(rigid_mesh.size()[0], -1, 2)
@@ -100,7 +103,6 @@ def H2Mesh(H, rigid_mesh):
 
 # 生成网格的各控制点坐标,其形状为 : [batch_size, grid_h + 1, grid_w + 1, 2]
 def get_rigid_mesh(batch_size, height, width):
-
     ww = torch.matmul(
         torch.ones([grid_h + 1, 1]),
         torch.unsqueeze(torch.linspace(0.0, float(width), grid_w + 1), 0),
@@ -157,6 +159,14 @@ def data_aug(img1, img2):
 
 # for train.py / test.py
 def build_model(net, input1_tensor, input2_tensor, is_training=True):
+    """
+    1.用网络预测H的4pt和TPS的控制点的偏移
+    2.计算mesh(的控制点)在网络预测的H和TPS motion后的坐标
+    3.将target及其mask通过单应性矩阵变到reference坐标系下(同名像素点的在2图中一样)
+    4.将reference及其mask通过单应性矩阵变到target坐标系下
+    5.将target及其mask通过TPS变到reference坐标系下
+    6.使用计算重叠区域,并用一个二值图表示重叠区和非重叠区
+    """
     batch_size, _, img_h, img_w = input1_tensor.size()
 
     # network
@@ -193,7 +203,7 @@ def build_model(net, input1_tensor, input2_tensor, is_training=True):
     M_tile = M_tensor.unsqueeze(0).expand(batch_size, -1, -1)
     M_tensor_inv = torch.inverse(M_tensor)
     M_tile_inv = M_tensor_inv.unsqueeze(0).expand(batch_size, -1, -1)
-    H_mat = torch.matmul(torch.matmul(M_tile_inv, H), M_tile)
+    H_mat = torch.matmul(torch.matmul(M_tile_inv, H), M_tile) #得到适用于批处理的H
 
     mask = torch.ones_like(input2_tensor)
     if torch.cuda.is_available():
@@ -234,15 +244,16 @@ def build_model(net, input1_tensor, input2_tensor, is_training=True):
     overlap_zero = torch.zeros_like(overlap)
     overlap = torch.where(overlap < 0.9, overlap_one, overlap_zero)
 
+    # H是由target -> reference的变换矩阵
     out_dict = {}
     out_dict.update(
-        output_H=output_H,
-        output_H_inv=output_H_inv,
-        warp_mesh=warp_mesh,
-        warp_mesh_mask=warp_mesh_mask,
+        output_H=output_H,              # 将target及其mask通过单应性矩阵变到reference坐标系下(只保留了重叠区，并使同名像素点的在2图中一样)
+        output_H_inv=output_H_inv,      # 将reference及其mask通过单应性矩阵变到target坐标系下
+        warp_mesh=warp_mesh,            # 将target通过TPS变到reference坐标系下
+        warp_mesh_mask=warp_mesh_mask,  # 将target的mask通过TPS变到reference坐标系下
         mesh1=rigid_mesh,
         mesh2=mesh,
-        overlap=overlap,
+        overlap=overlap,                # 在target系下的重叠区,0:重叠,1:非重叠
     )
 
     return out_dict
@@ -250,6 +261,12 @@ def build_model(net, input1_tensor, input2_tensor, is_training=True):
 
 # for train_ft.py
 def build_new_ft_model(net, input1_tensor, input2_tensor):
+    """
+    1.用网络预测H的4pt和TPS的控制点的偏移
+    2.计算mesh(的控制点)在网络预测的H和TPS motion后的坐标
+    3.带入(2)的数据对target进行TPS变换
+    与`build_output_model`的区别:此函数没有改变将warp后的图片的(h,w).导致warp后一部分图像的缺失
+    """
     batch_size, _, img_h, img_w = input1_tensor.size()
 
     H_motion, mesh_motion = net(input1_tensor, input2_tensor)
@@ -270,6 +287,9 @@ def build_new_ft_model(net, input1_tensor, input2_tensor):
     # solve homo using DLT
     H = torch_DLT.tensor_DLT(src_p, dst_p)
 
+    # 下面这一堆mesh的计算是用于TPS的
+    # 首先生成原始均匀分布的控制点(rigid_mesh),然后根据H变换后得到的mesh_motion进行偏移得到mesh
+    # 然后对rigid_mesh和mesh进行归一化,并进行TPS进行变换
     rigid_mesh = get_rigid_mesh(batch_size, img_h, img_w)
     ini_mesh = H2Mesh(H, rigid_mesh)
     mesh = ini_mesh + mesh_motion
@@ -288,8 +308,8 @@ def build_new_ft_model(net, input1_tensor, input2_tensor):
 
     out_dict = {}
     out_dict.update(
-        warp_mesh=warp_mesh,
-        warp_mesh_mask=warp_mesh_mask,
+        warp_mesh=warp_mesh,           #对target图像进行TPS变换后的结果
+        warp_mesh_mask=warp_mesh_mask, #对mask进行TPS变换后的结果
         rigid_mesh=rigid_mesh,
         mesh=mesh,
     )
@@ -299,14 +319,21 @@ def build_new_ft_model(net, input1_tensor, input2_tensor):
 
 # for train_ft.py
 def get_stitched_result(input1_tensor, input2_tensor, rigid_mesh, mesh):
+    """
+    1.根据变换后控制点的坐标最值,确定stitched img的h,w大小
+    2.对reference进行单应性变换(平移),将其变到stitched img的坐标系下
+    3.对target进行TPS变换,将其变到stitched img的坐标系下
+    4.对2张配准后的图片进行average fusion
+    """
     batch_size, _, img_h, img_w = input1_tensor.size()
 
+    # 根据实际的img size通过缩放调整控制点的坐标
     rigid_mesh = torch.stack(
         [rigid_mesh[..., 0] * img_w / 512, rigid_mesh[..., 1] * img_h / 512], 3
     )
     mesh = torch.stack([mesh[..., 0] * img_w / 512, mesh[..., 1] * img_h / 512], 3)
 
-    ######################################
+    # 根据控制点的坐标最值,确定stitched img的h,w大小
     width_max = torch.max(mesh[..., 0])
     width_max = torch.maximum(torch.tensor(img_w).cuda(), width_max)
     width_min = torch.min(mesh[..., 0])
@@ -321,11 +348,12 @@ def get_stitched_result(input1_tensor, input2_tensor, rigid_mesh, mesh):
     print(out_width)
     print(out_height)
 
+    # 将reference变到stitched image的坐标系下(可以看成平移操作)
     warp1 = torch.zeros([batch_size, 3, out_height.int(), out_width.int()]).cuda()
     warp1[
         :,
         :,
-        int(torch.abs(height_min)) : int(torch.abs(height_min)) + img_h,
+        int(torch.abs(height_min)) : int(torch.abs(height_min)) + img_h, #warp1的在新坐标系下的范围[abs(height_min), abs(height_min) + img_h]
         int(torch.abs(width_min)) : int(torch.abs(width_min)) + img_w,
     ] = (input1_tensor + 1) * 127.5
 
@@ -346,6 +374,7 @@ def get_stitched_result(input1_tensor, input2_tensor, rigid_mesh, mesh):
     norm_rigid_mesh = get_norm_mesh(rigid_mesh, img_h, img_w)
     norm_mesh = get_norm_mesh(mesh_trans, out_height, out_width)
 
+    # 用TPS变换将target变到stitched image的坐标系下
     stitch_tps_out = torch_tps_transform.transformer(
         torch.cat([input2_tensor + 1, mask], 1),
         norm_mesh,
@@ -355,6 +384,7 @@ def get_stitched_result(input1_tensor, input2_tensor, rigid_mesh, mesh):
     warp2 = stitch_tps_out[:, 0:3, :, :] * 127.5
     mask2 = stitch_tps_out[:, 3:6, :, :] * 255
 
+    # average fustion
     stitched = warp1 * (warp1 / (warp1 + warp2 + 1e-6)) + warp2 * (
         warp2 / (warp1 + warp2 + 1e-6)
     )
@@ -379,6 +409,12 @@ def get_stitched_result(input1_tensor, input2_tensor, rigid_mesh, mesh):
 
 # for test_output.py
 def build_output_model(net, input1_tensor, input2_tensor):
+    """
+    1.用网络预测H的4pt和TPS的控制点的偏移
+    2.根据变换后控制点的坐标最值,确定stitched img的h,w大小
+    3.对reference进行单应性变换,将其变到stitched img的坐标系下
+    4.对target进行TPS变换,将其变到stitched img的坐标系下
+    """
     batch_size, _, img_h, img_w = input1_tensor.size()
 
     resized_input1 = resize_512(input1_tensor)
@@ -386,6 +422,7 @@ def build_output_model(net, input1_tensor, input2_tensor):
     H_motion, mesh_motion = net(resized_input1, resized_input2)
 
     H_motion = H_motion.reshape(-1, 4, 2)
+    # 由于H是在(512,512)分辨率下训练的,这里先除以512再乘以当前的h,w是为了适应不同的分辨率
     H_motion = torch.stack(
         [H_motion[..., 0] * img_w / 512, H_motion[..., 1] * img_h / 512], 2
     )
@@ -408,7 +445,7 @@ def build_output_model(net, input1_tensor, input2_tensor):
     ini_mesh = H2Mesh(H, rigid_mesh)  # 使用H对网格上各控制点施加一个初始的偏移
     mesh = ini_mesh + mesh_motion
 
-    # 计算网格中各控制点的坐标范围
+    # 根据控制点的坐标最值,确定stitched img的h,w大小
     width_max = torch.max(mesh[..., 0])
     width_max = torch.maximum(torch.tensor(img_w).cuda(), width_max)
     width_min = torch.min(mesh[..., 0])
@@ -418,6 +455,7 @@ def build_output_model(net, input1_tensor, input2_tensor):
     height_min = torch.min(mesh[..., 1])
     height_min = torch.minimum(torch.tensor(0).cuda(), height_min)
 
+    # stitched img的h,w大小
     out_width = width_max - width_min
     out_height = height_max - height_min
     # print(out_width)
@@ -447,14 +485,18 @@ def build_output_model(net, input1_tensor, input2_tensor):
 
     # 平移矩阵
     I_ = torch.tensor(
-        [[1.0, 0.0, width_min], [0.0, 1.0, height_min], [0.0, 0.0, 1.0]]
+        [
+            [1.0, 0.0, width_min],
+            [0.0, 1.0, height_min],
+            [0.0, 0.0, 1.0]
+         ]
     )  # .unsqueeze(0)
     mask = torch.ones_like(input2_tensor)
     if torch.cuda.is_available():
         I_ = I_.cuda()
         mask = mask.cuda()
 
-    # 最终的齐次变化矩阵
+    # 最终的齐次变化矩阵,这个矩阵其实只包括缩放(imgsz!=512时)和平移,与单应性估计得到的H是无关的
     I_mat = torch.matmul(torch.matmul(N_tensor_inv, I_), M_tensor).unsqueeze(0)
     homo_output = torch_homo_transform.transformer(
         torch.cat((input1_tensor + 1, mask), 1),
@@ -476,10 +518,10 @@ def build_output_model(net, input1_tensor, input2_tensor):
 
     out_dict = {}
     out_dict.update(
-        final_warp1=homo_output[:, 0:3, ...] - 1,
-        final_warp1_mask=homo_output[:, 3:6, ...],
-        final_warp2=tps_output[:, 0:3, ...] - 1,
-        final_warp2_mask=tps_output[:, 3:6, ...],
+        final_warp1=homo_output[:, 0:3, ...] - 1, #将reference变换到stitched image的坐标系下
+        final_warp1_mask=homo_output[:, 3:6, ...],#将reference变换到stitched image的坐标系下的mask
+        final_warp2=tps_output[:, 0:3, ...] - 1,  #将target进行TPS变换到stitched image的坐标系下
+        final_warp2_mask=tps_output[:, 3:6, ...], #将target进行TPS变换到stitched image的坐标系下的mask
         mesh1=rigid_mesh,
         mesh2=mesh_trans,
     )

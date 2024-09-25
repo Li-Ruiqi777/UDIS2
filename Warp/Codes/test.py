@@ -139,7 +139,7 @@ if __name__ == "__main__":
     parser.add_argument("--gpu", type=str, default="0")
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument(
-        "--test_path", type=str, default="/opt/data/private/nl/Data/UDIS-D/testing/"
+        "--test_path", type=str, default="E:/DeepLearning/0_DataSets/UDIS-D/testing/testing/",
     )
 
     print("<==================== Loading data ===================>\n")

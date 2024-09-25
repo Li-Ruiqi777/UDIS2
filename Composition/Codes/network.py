@@ -10,9 +10,11 @@ def build_model(net, warp1_tensor, warp2_tensor, mask1_tensor, mask2_tensor):
     learned_mask1 = (
         mask1_tensor - mask1_tensor * mask2_tensor
     ) + mask1_tensor * mask2_tensor * out
+
     learned_mask2 = (
         mask2_tensor - mask1_tensor * mask2_tensor
     ) + mask1_tensor * mask2_tensor * (1 - out)
+    
     stitched_image = (
         (warp1_tensor + 1.0) * learned_mask1
         + (warp2_tensor + 1.0) * learned_mask2

@@ -8,9 +8,11 @@ from network import build_model, Network
 from dataset import TrainDataset
 import glob
 from loss import cal_lp_loss, inter_grid_loss, intra_grid_loss
+from torch.cuda.amp import autocast, GradScaler
 
 # 获取当前脚本上一级目录的绝对路径
-last_path = os.path.abspath(os.path.join(os.path.dirname("__file__"), os.path.pardir))
+# last_path = os.path.abspath(os.path.join(os.path.dirname("__file__"), os.path.pardir))
+last_path = "E:/DeepLearning/7_Stitch/UDIS2/Warp/"
 
 # path to save the summary files
 SUMMARY_DIR = os.path.join(last_path, "summary")
@@ -39,6 +41,7 @@ def train(args):
         num_workers=4,
         shuffle=True,
         drop_last=True,
+        pin_memory=True,
     )
 
     # define the network
@@ -73,6 +76,9 @@ def train(args):
     print("##################start training#######################")
     score_print_fre = 300
 
+    # 初始化GradScaler
+    scaler = GradScaler()
+
     for epoch in range(start_epoch, args.max_epoch):
 
         print("start epoch {}".format(epoch))
@@ -97,36 +103,38 @@ def train(args):
             # forward, backward, update weights
             optimizer.zero_grad()
 
-            batch_out = build_model(net, inpu1_tesnor, inpu2_tesnor)
-            # result
-            output_H = batch_out["output_H"]
-            output_H_inv = batch_out["output_H_inv"]
-            warp_mesh = batch_out["warp_mesh"]
-            warp_mesh_mask = batch_out["warp_mesh_mask"]
-            mesh1 = batch_out["mesh1"]
-            mesh2 = batch_out["mesh2"]
-            overlap = batch_out["overlap"]
+            with autocast():
+                batch_out = build_model(net, inpu1_tesnor, inpu2_tesnor)
+                # result
+                output_H = batch_out["output_H"]                # [B, 6, H, W]
+                output_H_inv = batch_out["output_H_inv"]        # [B, 6, H, W]
+                warp_mesh = batch_out["warp_mesh"]              # [B, 3, H, W]
+                warp_mesh_mask = batch_out["warp_mesh_mask"]    # [B, 3, H, W]
+                mesh1 = batch_out["mesh1"]                      # [B, 13, 13, 2]
+                mesh2 = batch_out["mesh2"]                      # [B, 13, 13, 2]
+                overlap = batch_out["overlap"]                  # [B, 12, 12]
 
-            # calculate loss for overlapping regions
-            overlap_loss = cal_lp_loss(
-                inpu1_tesnor,
-                inpu2_tesnor,
-                output_H,
-                output_H_inv,
-                warp_mesh,
-                warp_mesh_mask,
-            )
-            # calculate loss for non-overlapping regions
-            nonoverlap_loss = 10 * inter_grid_loss(
-                overlap, mesh2
-            ) + 10 * intra_grid_loss(mesh2)
+                # calculate loss for overlapping regions
+                overlap_loss = cal_lp_loss(
+                    inpu1_tesnor,
+                    inpu2_tesnor,
+                    output_H,
+                    output_H_inv,
+                    warp_mesh,
+                    warp_mesh_mask,
+                )
+                # calculate loss for non-overlapping regions
+                nonoverlap_loss = 10 * inter_grid_loss(
+                    overlap, mesh2
+                ) + 10 * intra_grid_loss(mesh2)
 
-            total_loss = overlap_loss + nonoverlap_loss
-            total_loss.backward()
+                total_loss = overlap_loss + nonoverlap_loss
 
+            scaler.scale(total_loss).backward()
             # clip the gradient
             torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=3, norm_type=2)
-            optimizer.step()
+            scaler.step(optimizer)
+            scaler.update()
 
             overlap_loss_sigma += overlap_loss.item()
             nonoverlap_loss_sigma += nonoverlap_loss.item()
@@ -155,20 +163,20 @@ def train(args):
                         optimizer.state_dict()["param_groups"][0]["lr"],
                     )
                 )
-                # visualization
-                writer.add_image("inpu1", (inpu1_tesnor[0] + 1.0) / 2.0, glob_iter)
-                writer.add_image("inpu2", (inpu2_tesnor[0] + 1.0) / 2.0, glob_iter)
-                writer.add_image(
-                    "warp_H", (output_H[0, 0:3, :, :] + 1.0) / 2.0, glob_iter
-                )
-                writer.add_image("warp_mesh", (warp_mesh[0] + 1.0) / 2.0, glob_iter)
-                writer.add_scalar(
-                    "lr", optimizer.state_dict()["param_groups"][0]["lr"], glob_iter
-                )
-                writer.add_scalar("total loss", average_loss, glob_iter)
-                writer.add_scalar("overlap loss", average_overlap_loss, glob_iter)
-                writer.add_scalar("nonoverlap loss", average_nonoverlap_loss, glob_iter)
 
+                # visualization
+                # writer.add_image("inpu1", (inpu1_tesnor[0] + 1.0) / 2.0, glob_iter)
+                # writer.add_image("inpu2", (inpu2_tesnor[0] + 1.0) / 2.0, glob_iter)
+                # writer.add_image(
+                #     "warp_H", (output_H[0, 0:3, :, :] + 1.0) / 2.0, glob_iter
+                # )
+                # writer.add_image("warp_mesh", (warp_mesh[0] + 1.0) / 2.0, glob_iter)
+                # writer.add_scalar(
+                #     "lr", optimizer.state_dict()["param_groups"][0]["lr"], glob_iter
+                # )
+                # writer.add_scalar("total loss", average_loss, glob_iter)
+                # writer.add_scalar("overlap loss", average_overlap_loss, glob_iter)
+                # writer.add_scalar("nonoverlap loss", average_nonoverlap_loss, glob_iter)
             glob_iter += 1
 
         scheduler.step()
@@ -195,8 +203,8 @@ if __name__ == "__main__":
 
     # add arguments
     parser.add_argument("--gpu", type=str, default="0")
-    parser.add_argument("--batch_size", type=int, default=4)
-    parser.add_argument("--max_epoch", type=int, default=100)
+    parser.add_argument("--batch_size", type=int, default=1)
+    parser.add_argument("--max_epoch", type=int, default=101)
     parser.add_argument(
         "--train_path",
         type=str,

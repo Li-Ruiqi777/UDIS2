@@ -13,6 +13,9 @@ def l_num_loss(img1, img2, l_num=1):
 
 
 def cal_lp_loss(input1, input2, output_H, output_H_inv, warp_mesh, warp_mesh_mask):
+    """
+    计算alignment loss
+    """
     batch_size, _, img_h, img_w = input1.size()
 
     # part one: sym homo loss with color balance
@@ -20,6 +23,7 @@ def cal_lp_loss(input1, input2, output_H, output_H_inv, warp_mesh, warp_mesh_mas
         torch.sum(output_H[:, 0:3, :, :], [2, 3])
         - torch.sum(input1 * output_H[:, 3:6, :, :], [2, 3])
     ) / torch.sum(output_H[:, 3:6, :, :], [2, 3])
+
     input1_balance = input1 + delta1.unsqueeze(2).unsqueeze(3).expand(
         -1, -1, img_h, img_w
     )
@@ -28,10 +32,12 @@ def cal_lp_loss(input1, input2, output_H, output_H_inv, warp_mesh, warp_mesh_mas
         torch.sum(output_H_inv[:, 0:3, :, :], [2, 3])
         - torch.sum(input2 * output_H_inv[:, 3:6, :, :], [2, 3])
     ) / torch.sum(output_H_inv[:, 3:6, :, :], [2, 3])
+
     input2_balance = input2 + delta2.unsqueeze(2).unsqueeze(3).expand(
         -1, -1, img_h, img_w
     )
 
+    # abs(Ir·φ(1,H) - φ(It,H)) + abs(It·φ(1,H-1) - φ(Ir,H-1))
     lp_loss_1 = l_num_loss(
         input1_balance * output_H[:, 3:6, :, :], output_H[:, 0:3, :, :], 1
     ) + l_num_loss(
@@ -74,7 +80,7 @@ def inter_grid_loss(overlap, mesh):
     ##############################
     # compute horizontal edges
     w_edges = mesh[:, :, 0:grid_w, :] - mesh[:, :, 1 : grid_w + 1, :]
-    # compute angles of two successive horizontal edges
+    # 计算2条连续水平边的夹角
     cos_w = torch.sum(
         w_edges[:, :, 0 : grid_w - 1, :] * w_edges[:, :, 1:grid_w, :], 3
     ) / (
@@ -120,6 +126,7 @@ def inter_grid_loss(overlap, mesh):
         1 - torch.abs(overlap[:, :, 0 : grid_w - 1] - overlap[:, :, 1:grid_w])
     ) * overlap[:, :, 0 : grid_w - 1]
     error_w = depth_diff_w * delta_w_angle
+    
     # on overlapping regions
     depth_diff_h = (
         1 - torch.abs(overlap[:, 0 : grid_h - 1, :] - overlap[:, 1:grid_h, :])

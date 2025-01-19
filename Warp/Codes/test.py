@@ -16,8 +16,7 @@ import cv2
 
 
 last_path = os.path.abspath(os.path.join(os.path.dirname("__file__"), os.path.pardir))
-MODEL_DIR = os.path.join(last_path, "model")
-
+MODEL_DIR = "E:/DeepLearning/7_Stitch/UDIS2/Warp/model"
 
 def create_gif(image_list, gif_name, duration=0.35):
     frames = []
@@ -94,14 +93,17 @@ def test(args):
             )
 
             # calculate psnr/ssim
-            psnr = skimage.measure.compare_psnr(
-                inpu1_np * warp_mesh_mask_np, warp_mesh_np * warp_mesh_mask_np, 255
+            psnr = skimage.metrics.peak_signal_noise_ratio(
+                inpu1_np * warp_mesh_mask_np,
+                warp_mesh_np * warp_mesh_mask_np,
+                data_range=255,
             )
-            ssim = skimage.measure.compare_ssim(
+            ssim = skimage.metrics.structural_similarity(
                 inpu1_np * warp_mesh_mask_np,
                 warp_mesh_np * warp_mesh_mask_np,
                 data_range=255,
                 multichannel=True,
+                win_size=3
             )
 
             print("i = {}, psnr = {:.6f}".format(i + 1, psnr))
@@ -139,7 +141,9 @@ if __name__ == "__main__":
     parser.add_argument("--gpu", type=str, default="0")
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument(
-        "--test_path", type=str, default="E:/DeepLearning/0_DataSets/UDIS-D/testing/testing/",
+        "--test_path",
+        type=str,
+        default="E:/DeepLearning/0_DataSets/UDIS-D/testing/testing/",
     )
 
     print("<==================== Loading data ===================>\n")

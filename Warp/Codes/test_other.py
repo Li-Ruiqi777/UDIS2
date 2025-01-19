@@ -1,6 +1,6 @@
 """
-在任意图片上进行测试,会进行迭代以优化结果,适合离线图像拼接
-这个迭代优化到底是优化什么啊?重叠区的伪影?
+在任意图片上进行warp,会进行迭代以优化最终结果,可以看成对单对图片的Finetune
+这个迭代优化主要是优化重叠区没完全对齐产生的鬼影,但不能完全消除,如果鬼影实在是太大,应该用seamcut
 """
 
 import argparse
@@ -13,7 +13,6 @@ import torch.optim as optim
 
 import cv2
 
-# from torch_homography_model import build_model
 from network import get_stitched_result, Network, build_new_ft_model
 
 import glob
@@ -21,7 +20,7 @@ from loss import cal_lp_loss2
 import torchvision.transforms as T
 
 # import PIL
-resize_512 = T.Resize((512, 512))
+resize_512 = T.Resize((512, 512), antialias=True)
 
 
 def loadSingleData(data_path, img1_name, img2_name):
@@ -30,12 +29,17 @@ def loadSingleData(data_path, img1_name, img2_name):
     """
     # load image1
     input1 = cv2.imread(data_path + img1_name)
+    # 缩小input1的尺寸
+    input1 = cv2.resize(input1, (800, 600))
+    # input1 = cv2.resize(input1, (512, 512))
     input1 = input1.astype(dtype=np.float32)
     input1 = (input1 / 127.5) - 1.0
     input1 = np.transpose(input1, [2, 0, 1])
 
     # load image2
     input2 = cv2.imread(data_path + img2_name)
+    input2 = cv2.resize(input2, (800, 600))
+    # input2 = cv2.resize(input2, (512, 512))
     input2 = input2.astype(dtype=np.float32)
     input2 = (input2 / 127.5) - 1.0
     input2 = np.transpose(input2, [2, 0, 1])
@@ -244,10 +248,10 @@ if __name__ == "__main__":
     parser.add_argument("--gpu", type=str, default="0")
     parser.add_argument("--max_iter", type=int, default=100)
     parser.add_argument(
-        "--path", type=str, default="E:/DeepLearning/7_Stitch/UDIS2/Carpark-DHW/"
+        "--path", type=str, default="F:/MasterGraduate/03-Code/PanoramicTracking/datasets/images/data5/"
     )
-    parser.add_argument("--img1_name", type=str, default="input1.jpg")
-    parser.add_argument("--img2_name", type=str, default="input2.jpg")
+    parser.add_argument("--img1_name", type=str, default="3.jpg")
+    parser.add_argument("--img2_name", type=str, default="1.jpg")
 
     # nl: parse the arguments
     args = parser.parse_args()

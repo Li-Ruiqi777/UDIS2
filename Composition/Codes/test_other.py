@@ -1,3 +1,7 @@
+'''
+测试其他数据集的图片
+'''
+
 # coding: utf-8
 import argparse
 import torch
@@ -58,7 +62,9 @@ def test_other(args):
         net = net.cuda()
 
     # load the existing models if it exists
-    ckpt_list = glob.glob(MODEL_DIR + "/*.pth")
+    # ckpt_list = glob.glob(MODEL_DIR + "/*.pth")
+    ckpt_list = []
+    ckpt_list.append("E:/DeepLearning/7_Stitch/UDIS2/Composition/model/epoch050_model.pth")
     ckpt_list.sort()
     if len(ckpt_list) != 0:
         model_path = ckpt_list[-1]
@@ -130,7 +136,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--gpu", type=str, default="0")
-    parser.add_argument("--path", type=str, default="../../Carpark-DHW/")
+    # parser.add_argument("--path", type=str, default="E:/DeepLearning/7_Stitch/UDIS2/Carpark-DHW/")
+    parser.add_argument("--path", type=str, default="F:/MasterGraduate/03-Code/PanoramicTracking/datasets/images/data8/")
 
     print("<==================== Loading data ===================>\n")
 

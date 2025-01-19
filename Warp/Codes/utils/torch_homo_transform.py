@@ -1,11 +1,16 @@
 import torch
 import numpy as np
 
+'''
+这是个嵌套函数, 在函数中可以再定义几个函数, 最后按一定顺序调用
+'''
 
 def transformer(U, theta, out_size, **kwargs):
 
     def _repeat(x, n_repeats):
-
+        '''
+        重复一个张量x，用于创建多个采样点
+        '''
         rep = torch.ones(
             [
                 n_repeats,
@@ -18,7 +23,9 @@ def transformer(U, theta, out_size, **kwargs):
         return x.reshape([-1])
 
     def _interpolate(im, x, y, out_size):
-
+        '''
+        使用双线性插值来计算输出图像对应坐标的像素值,相当于STN的sampler
+        '''
         num_batch, num_channels, height, width = im.size()
 
         height_f = height
@@ -95,6 +102,9 @@ def transformer(U, theta, out_size, **kwargs):
         return output
 
     def _meshgrid(height, width):
+        '''
+        创建一个坐标网格，通过网格的形式表示图像中各像素点坐标
+        '''
 
         x_t = torch.matmul(
             torch.ones([height, 1]),
@@ -119,11 +129,17 @@ def transformer(U, theta, out_size, **kwargs):
         return grid
 
     def _transform(theta, input_dim, out_size):
+        '''
+        将输入图像 input_dim 通过透视变换参数张量 theta 进行变换，并计算新的像素坐标
+        然后调用 _interpolate 来执行插值，得到变换后的图像
+        '''
         num_batch, num_channels, height, width = input_dim.size()
-        #  Changed
+        #  修改变换参数张量的形式
         theta = theta.reshape([-1, 3, 3]).float()
 
         out_height, out_width = out_size[0], out_size[1]
+
+        # (Warped) Grid Generator
         grid = _meshgrid(out_height, out_width)
         grid = grid.unsqueeze(0).reshape([1, -1])
         shape = grid.size()
@@ -142,18 +158,19 @@ def transformer(U, theta, out_size, **kwargs):
         smallers = 1e-6 * (1.0 - torch.ge(torch.abs(t_s_flat), small).float())
 
         t_s_flat = t_s_flat + smallers
-        # condition = torch.sum(torch.gt(torch.abs(t_s_flat), small).float())
+        
         # Ty changed
         x_s_flat = x_s.reshape([-1]) / t_s_flat
         y_s_flat = y_s.reshape([-1]) / t_s_flat
 
+        # Sampler
         input_transformed = _interpolate(input_dim, x_s_flat, y_s_flat, out_size)
 
         output = input_transformed.reshape(
             [num_batch, out_height, out_width, num_channels]
         )
         output = output.permute(0, 3, 1, 2)
-        return output  # , condition
+        return output
 
     output = _transform(theta, U, out_size)
-    return output  # , condition
+    return output

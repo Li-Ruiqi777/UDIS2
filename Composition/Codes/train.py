@@ -1,4 +1,6 @@
 import argparse
+from email.policy import strict
+
 import torch
 from torch.utils.data import DataLoader
 import os
@@ -11,14 +13,14 @@ from loss import cal_boundary_term, cal_smooth_term_stitch, cal_smooth_term_diff
 
 
 # path of project
-last_path = os.path.abspath(os.path.join(os.path.dirname("__file__"), os.path.pardir))
+last_path = "E:/DeepLearning/7_Stitch/UDIS2/Composition/"
 
 # path to save the summary files
 SUMMARY_DIR = os.path.join(last_path, "summary")
 writer = SummaryWriter(log_dir=SUMMARY_DIR)
 
 # path to save the model files
-MODEL_DIR = os.path.join(last_path, "model")
+MODEL_DIR = "E:/DeepLearning/7_Stitch/UDIS2/Warp/model/"
 
 # create folders if it dose not exist
 if not os.path.exists(MODEL_DIR):
@@ -61,8 +63,8 @@ def train(args):
         model_path = ckpt_list[-1]
         checkpoint = torch.load(model_path)
 
-        net.load_state_dict(checkpoint["model"])
-        optimizer.load_state_dict(checkpoint["optimizer"])
+        net.load_state_dict(checkpoint["model"], strict=False)
+        # optimizer.load_state_dict(checkpoint["optimizer"])
         start_epoch = checkpoint["epoch"]
         glob_iter = checkpoint["glob_iter"]
         scheduler.last_epoch = start_epoch
@@ -217,11 +219,13 @@ if __name__ == "__main__":
     # nl: add arguments
     parser.add_argument("--gpu", type=str, default="0")
     parser.add_argument("--batch_size", type=int, default=1)
-    parser.add_argument("--max_epoch", type=int, default=50)
+    parser.add_argument("--max_epoch", type=int, default=101) #50
+    # 得先训练warp,生成了对应文件夹后才能训练composition
     parser.add_argument(
-        "--train_path", type=str, default="/opt/data/private/nl/Data/UDIS-D/training"
+        "--train_path",
+        type=str,
+        default="E:/DeepLearning/0_DataSets/UDIS-D/testing/testing/",
     )
-
     # nl: parse the arguments
     args = parser.parse_args()
     print(args)

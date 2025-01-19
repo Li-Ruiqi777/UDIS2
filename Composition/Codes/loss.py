@@ -60,9 +60,7 @@ def boundary_extraction(mask):
     return x * mask
 
 
-def cal_boundary_term(
-    inpu1_tesnor, inpu2_tesnor, mask1_tesnor, mask2_tesnor, stitched_image
-):
+def cal_boundary_term(inpu1_tesnor, inpu2_tesnor, mask1_tesnor, mask2_tesnor, stitched_image):
     boundary_mask1 = mask1_tesnor * boundary_extraction(mask2_tesnor)
     boundary_mask2 = mask2_tesnor * boundary_extraction(mask1_tesnor)
 

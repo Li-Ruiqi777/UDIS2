@@ -20,7 +20,6 @@ grid_w = grid_res.GRID_W
 # last_path = os.path.abspath(os.path.join(os.path.dirname("__file__"), os.path.pardir))
 MODEL_DIR = "E:/DeepLearning/7_Stitch/UDIS2/Warp/model"
 
-
 def draw_mesh_on_warp(warp, f_local):
     point_color = (0, 255, 0)  # BGR
     thickness = 2
@@ -97,7 +96,7 @@ def test(args):
     )
 
     # define the network
-    net = Network()  # build_model(args.model_name)
+    net = Network()
     if torch.cuda.is_available():
         net = net.cuda()
 
@@ -105,8 +104,8 @@ def test(args):
     ckpt_list = glob.glob(MODEL_DIR + "/*.pth")
     ckpt_list.sort()
     if len(ckpt_list) != 0:
-        model_path = ckpt_list[-1]
-        # model_path = '/opt/data/private/nl/Repository/Unsupervised_Mesh_Stitching/UDISv2-88/UDISv2-Homo_TPS88-10grid_NO-res50-new3/model/epoch150_model.pth'
+        # model_path = ckpt_list[-1]
+        model_path = "E:/DeepLearning/7_Stitch/UDIS2/Warp/model/epoch100_model.pth"
         checkpoint = torch.load(model_path)
 
         net.load_state_dict(checkpoint["model"])
@@ -116,31 +115,28 @@ def test(args):
 
     print("##################start testing#######################")
 
-    path_ave_fusion = "E:/DeepLearning/7_Stitch/UDIS2/ave_fusion/"
+    path_ave_fusion = os.path.join(args.test_path , "ave_fusion/")
     if not os.path.exists(path_ave_fusion):
         os.makedirs(path_ave_fusion)
 
-    path_warp1 = args.test_path + "warp1/"
+    path_warp1 = os.path.join(args.test_path , "warp1/")
     if not os.path.exists(path_warp1):
         os.makedirs(path_warp1)
 
-    path_warp2 = args.test_path + "warp2/"
+    path_warp2 = os.path.join(args.test_path , "warp2/")
     if not os.path.exists(path_warp2):
         os.makedirs(path_warp2)
 
-    path_mask1 = args.test_path + "mask1/"
+    path_mask1 = os.path.join(args.test_path , "mask1/")
     if not os.path.exists(path_mask1):
         os.makedirs(path_mask1)
 
-    path_mask2 = args.test_path + "mask2/"
+    path_mask2 = os.path.join(args.test_path , "mask2/")
     if not os.path.exists(path_mask2):
         os.makedirs(path_mask2)
 
     net.eval()
     for i, batch_value in enumerate(test_loader):
-
-        # if i != 975:
-        #    continue
 
         inpu1_tesnor = batch_value[0].float()
         inpu2_tesnor = batch_value[1].float()
@@ -203,13 +199,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--gpu", type=str, default="0")
-    parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--batch_size", type=int, default=1)
 
-    # /opt/data/private/nl/Data/UDIS-D/testing/  or  /opt/data/private/nl/Data/UDIS-D/training/
     parser.add_argument(
         "--test_path",
         type=str,
-        default="E:/DeepLearning/0_DataSets/UDIS-D/testing/testing/",
+        default="E:/DeepLearning/0_DataSets/007-UDIS-D/testing/testing",
     )
 
     print("<==================== Loading data ===================>\n")

@@ -11,7 +11,7 @@ import torchvision.models as models
 
 import torchvision.transforms as T
 
-resize_512 = T.Resize((512, 512))
+resize_512 = T.Resize((512, 512), antialias=True)
 
 import grid_res
 
@@ -157,7 +157,7 @@ def data_aug(img1, img2):
     return img1_aug, img2_aug
 
 
-# for train.py / test.py
+# 用于训练和指标计算时, 计算一个batch的输出
 def build_model(net, input1_tensor, input2_tensor, is_training=True):
     """
     1.用网络预测H的4pt和TPS的控制点的偏移
@@ -259,7 +259,7 @@ def build_model(net, input1_tensor, input2_tensor, is_training=True):
     return out_dict
 
 
-# for train_ft.py
+# 用于在线迭代算法中的初步粗配准
 def build_new_ft_model(net, input1_tensor, input2_tensor):
     """
     1.用网络预测H的4pt和TPS的控制点的偏移
@@ -316,8 +316,7 @@ def build_new_ft_model(net, input1_tensor, input2_tensor):
 
     return out_dict
 
-
-# for train_ft.py
+# 用于在线迭代算法中的后续Fine tuning
 def get_stitched_result(input1_tensor, input2_tensor, rigid_mesh, mesh):
     """
     1.根据变换后控制点的坐标最值,确定stitched img的h,w大小
@@ -407,12 +406,12 @@ def get_stitched_result(input1_tensor, input2_tensor, rigid_mesh, mesh):
     return out_dict
 
 
-# for test_output.py
+# 用于拼接时一个batch的输出
 def build_output_model(net, input1_tensor, input2_tensor):
     """
     1.用网络预测H的4pt和TPS的控制点的偏移
     2.根据变换后控制点的坐标最值,确定stitched img的h,w大小
-    3.对reference进行单应性变换,将其变到stitched img的坐标系下
+    3.对reference进行平移变换,将其变到stitched img的坐标系下
     4.对target进行TPS变换,将其变到stitched img的坐标系下
     """
     batch_size, _, img_h, img_w = input1_tensor.size()
@@ -458,19 +457,11 @@ def build_output_model(net, input1_tensor, input2_tensor):
     # stitched img的h,w大小
     out_width = width_max - width_min
     out_height = height_max - height_min
-    # print(out_width)
-    # print(out_height)
+
+    print(f"x_max: {width_max}, x_min: {width_min}, y_max: {height_max}, y_min: {height_min}")
+    print(f"output_width: {out_width}, output_height: {out_height}")
 
     # get warped img1
-    # 缩放矩阵
-    M_tensor = torch.tensor(
-        [
-            [out_width / 2.0, 0.0, out_width / 2.0],
-            [0.0, out_height / 2.0, out_height / 2.0],
-            [0.0, 0.0, 1.0],
-        ]
-    )
-    # 归一化矩阵
     N_tensor = torch.tensor(
         [
             [img_w / 2.0, 0.0, img_w / 2.0],
@@ -478,6 +469,15 @@ def build_output_model(net, input1_tensor, input2_tensor):
             [0.0, 0.0, 1.0],
         ]
     )
+
+    M_tensor = torch.tensor(
+        [
+            [out_width / 2.0, 0.0, out_width / 2.0],
+            [0.0, out_height / 2.0, out_height / 2.0],
+            [0.0, 0.0, 1.0],
+        ]
+    )
+
     if torch.cuda.is_available():
         M_tensor = M_tensor.cuda()
         N_tensor = N_tensor.cuda()
@@ -496,7 +496,7 @@ def build_output_model(net, input1_tensor, input2_tensor):
         I_ = I_.cuda()
         mask = mask.cuda()
 
-    # 最终的齐次变化矩阵,这个矩阵其实只包括缩放(imgsz!=512时)和平移,与单应性估计得到的H是无关的
+    # 最终的齐次变化矩阵,这个矩阵其实只包括平移和图像坐标系范围的变化,与单应性估计得到的H是无关的
     I_mat = torch.matmul(torch.matmul(N_tensor_inv, I_), M_tensor).unsqueeze(0)
     homo_output = torch_homo_transform.transformer(
         torch.cat((input1_tensor + 1, mask), 1),
@@ -518,8 +518,8 @@ def build_output_model(net, input1_tensor, input2_tensor):
 
     out_dict = {}
     out_dict.update(
-        final_warp1=homo_output[:, 0:3, ...] - 1, #将reference变换到stitched image的坐标系下
-        final_warp1_mask=homo_output[:, 3:6, ...],#将reference变换到stitched image的坐标系下的mask
+        final_warp1=homo_output[:, 0:3, ...] - 1, #将reference平移变换到stitched image的坐标系下
+        final_warp1_mask=homo_output[:, 3:6, ...],#将reference平移变换到stitched image的坐标系下的mask
         final_warp2=tps_output[:, 0:3, ...] - 1,  #将target进行TPS变换到stitched image的坐标系下
         final_warp2_mask=tps_output[:, 3:6, ...], #将target进行TPS变换到stitched image的坐标系下的mask
         mesh1=rigid_mesh,
@@ -612,7 +612,7 @@ class Network(nn.Module):
                 m.bias.data.zero_()
 
         ssl._create_default_https_context = ssl._create_unverified_context
-        resnet50_model = models.resnet.resnet50(pretrained=True)
+        resnet50_model = models.resnet.resnet50(weights=models.ResNet50_Weights.DEFAULT)
 
         if torch.cuda.is_available():
             resnet50_model = resnet50_model.cuda()
@@ -661,7 +661,8 @@ class Network(nn.Module):
         src_p = src_p.unsqueeze(0).expand(batch_size, -1, -1)
         dst_p = src_p + H_motion_1  # 将偏移施加到点上
         H = torch_DLT.tensor_DLT(src_p / 8, dst_p / 8)  # 由DLT计算H
-
+        
+        # 这里之所以/8是因为输出feature map的尺寸是原图的1/8
         M_tensor = torch.tensor(
             [
                 [img_w / 8 / 2.0, 0.0, img_w / 8 / 2.0],

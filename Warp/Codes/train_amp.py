@@ -4,10 +4,10 @@ from torch.utils.data import DataLoader
 import os
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
-from network import build_model, Network
+from network import get_batch_outputs_for_train, UDIS2
 from dataset import TrainDataset
 import glob
-from loss import cal_lp_loss, inter_grid_loss, intra_grid_loss
+from loss import get_overlap_loss, get_inter_grid_loss, get_intra_grid_loss
 from torch.cuda.amp import autocast, GradScaler
 
 # 获取当前脚本上一级目录的绝对路径
@@ -43,7 +43,7 @@ def train(args):
     )
 
     # 模型创建
-    net = Network()
+    net = UDIS2()
     if torch.cuda.is_available():
         net = net.cuda()
 
@@ -105,7 +105,7 @@ def train(args):
             optimizer.zero_grad()
 
             with autocast():
-                batch_out = build_model(net, inpu1_tesnor, inpu2_tesnor)
+                batch_out = get_batch_outputs_for_train(net, inpu1_tesnor, inpu2_tesnor)
                 # result
                 output_H = batch_out["output_H"]                # [B, 6, H, W]
                 output_H_inv = batch_out["output_H_inv"]        # [B, 6, H, W]
@@ -116,7 +116,7 @@ def train(args):
                 overlap = batch_out["overlap"]                  # [B, 12, 12]
 
                 # calculate loss for overlapping regions
-                overlap_loss = cal_lp_loss(
+                overlap_loss = get_overlap_loss(
                     inpu1_tesnor,
                     inpu2_tesnor,
                     output_H,
@@ -125,9 +125,9 @@ def train(args):
                     warp_mesh_mask,
                 )
                 # calculate loss for non-overlapping regions
-                nonoverlap_loss = 10 * inter_grid_loss(
+                nonoverlap_loss = 10 * get_inter_grid_loss(
                     overlap, mesh2
-                ) + 10 * intra_grid_loss(mesh2)
+                ) + 10 * get_intra_grid_loss(mesh2)
 
                 total_loss = overlap_loss + nonoverlap_loss
 

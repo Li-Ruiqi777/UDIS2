@@ -7,7 +7,7 @@ import torch
 from torch.utils.data import DataLoader
 import torch.nn as nn
 import imageio
-from network import build_output_model, Network
+from network import get_batch_outputs_for_stitch, UDIS2
 from dataset import *
 import os
 import cv2
@@ -96,7 +96,7 @@ def test(args):
     )
 
     # define the network
-    net = Network()
+    net = UDIS2()
     if torch.cuda.is_available():
         net = net.cuda()
 
@@ -147,7 +147,7 @@ def test(args):
 
         with torch.no_grad():
             # 计算warp模块的输出
-            batch_out = build_output_model(net, inpu1_tesnor, inpu2_tesnor)
+            batch_out = get_batch_outputs_for_stitch(net, inpu1_tesnor, inpu2_tesnor)
 
         final_warp1 = batch_out["final_warp1"]
         final_warp1_mask = batch_out["final_warp1_mask"]

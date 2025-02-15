@@ -8,13 +8,13 @@ grid_h = grid_res.GRID_H
 grid_w = grid_res.GRID_W
 
 
-def l_num_loss(img1, img2, l_num=1):
+def get_norm_loss(img1, img2, l_num=1):
     return torch.mean(torch.abs((img1 - img2) ** l_num))
 
 
-def cal_lp_loss(input1, input2, output_H, output_H_inv, warp_mesh, warp_mesh_mask):
+def get_overlap_loss(input1, input2, output_H, output_H_inv, warp_mesh, warp_mesh_mask):
     """
-    计算alignment loss
+    计算重叠区的像素差值, 对应论文中的alignment loss
     output_H: warp(input_tensor2 cat 全1mask) [N, 6, H, W]
     """
     batch_size, _, img_h, img_w = input1.size()
@@ -29,14 +29,14 @@ def cal_lp_loss(input1, input2, output_H, output_H_inv, warp_mesh, warp_mesh_mas
     input2_balance = input2 + delta2.unsqueeze(2).unsqueeze(3).expand(-1, -1, img_h, img_w)
 
     # abs(Ir·φ(1,H) - φ(It,H)) + abs(It·φ(1,H-1) - φ(Ir,H-1))
-    lp_loss_1 = l_num_loss( input1_balance * output_H[:, 3:6, :, :], output_H[:, 0:3, :, :], 1) 
-    + l_num_loss( input2_balance * output_H_inv[:, 3:6, :, :], output_H_inv[:, 0:3, :, :], 1)
+    lp_loss_1 = get_norm_loss( input1_balance * output_H[:, 3:6, :, :], output_H[:, 0:3, :, :], 1) 
+    + get_norm_loss( input2_balance * output_H_inv[:, 3:6, :, :], output_H_inv[:, 0:3, :, :], 1)
     
     # part two: tps loss with color balance
     delta3 = (torch.sum(warp_mesh, [2, 3]) - torch.sum(input1 * warp_mesh_mask, [2, 3])) / torch.sum(warp_mesh_mask, [2, 3])
     input1_newbalance = input1 + delta3.unsqueeze(2).unsqueeze(3).expand(-1, -1, img_h, img_w)
 
-    lp_loss_2 = l_num_loss(input1_newbalance * warp_mesh_mask, warp_mesh, 1)
+    lp_loss_2 = get_norm_loss(input1_newbalance * warp_mesh_mask, warp_mesh, 1)
 
     lp_loss = 3.0 * lp_loss_1 + 1.0 * lp_loss_2
 
@@ -53,13 +53,13 @@ def cal_lp_loss2(input1, warp_mesh, warp_mesh_mask):
         -1, -1, img_h, img_w
     )
 
-    lp_loss_2 = l_num_loss(input1_newbalance * warp_mesh_mask, warp_mesh, 1)
+    lp_loss_2 = get_norm_loss(input1_newbalance * warp_mesh_mask, warp_mesh, 1)
     lp_loss = 1.0 * lp_loss_2
 
     return lp_loss
 
 
-def inter_grid_loss(overlap, mesh):
+def get_inter_grid_loss(overlap, mesh):
 
     ##############################
     # compute horizontal edges
@@ -121,7 +121,7 @@ def inter_grid_loss(overlap, mesh):
 
 
 # intra-grid constraint
-def intra_grid_loss(pts):
+def get_intra_grid_loss(pts):
 
     max_w = 512 / grid_w * 2
     max_h = 512 / grid_h * 2

@@ -16,7 +16,12 @@ import cv2
 
 
 def tensor_DLT(src_p, dst_p):
-
+    '''
+    输入必须转到cuda上
+    src_p(输入点的坐标):    [N, 4, 2]
+    dst_p(变换后点的坐标):  [N, 4, 2]
+    return(标准单应矩阵):   [N, 3, 3]
+    '''
     bs, _, _ = src_p.shape
 
     ones = torch.ones(bs, 4, 1)

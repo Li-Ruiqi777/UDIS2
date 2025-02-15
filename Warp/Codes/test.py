@@ -7,7 +7,7 @@ import torch
 from torch.utils.data import DataLoader
 import torch.nn as nn
 import imageio
-from network import build_model, Network
+from network import get_batch_outputs_for_train, UDIS2
 from dataset import *
 import os
 import numpy as np
@@ -42,7 +42,7 @@ def test(args):
     )
 
     # define the network
-    net = Network()  # build_model(args.model_name)
+    net = UDIS2()  # get_batch_outputs_for_train_and_test(args.model_name)
     if torch.cuda.is_available():
         net = net.cuda()
 
@@ -71,7 +71,7 @@ def test(args):
             inpu2_tesnor = inpu2_tesnor.cuda()
 
             with torch.no_grad():
-                batch_out = build_model(
+                batch_out = get_batch_outputs_for_train(
                     net, inpu1_tesnor, inpu2_tesnor, is_training=False
                 )
 

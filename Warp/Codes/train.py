@@ -4,10 +4,10 @@ from torch.utils.data import DataLoader
 import os
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
-from network import build_model, Network
+from network import get_batch_outputs_for_train, UDIS2
 from dataset import TrainDataset
 import glob
-from loss import cal_lp_loss, inter_grid_loss, intra_grid_loss
+from loss import get_overlap_loss, get_inter_grid_loss, get_intra_grid_loss
 import datetime
 
 warp_folder_path = "E:/DeepLearning/7_Stitch/UDIS2/Warp/"
@@ -27,20 +27,20 @@ def train(args):
     os.environ['CUDA_DEVICES_ORDER'] = "PCI_BUS_ID"
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     
-    # define dataset
+    # 定义数据集
     train_data = TrainDataset(data_path=args.train_path)
     train_loader = DataLoader(dataset=train_data, batch_size=args.batch_size, num_workers=4, shuffle=True, drop_last=True, pin_memory=True)
 
-    # define the network
-    net = Network()
+    # 定义网络模型
+    net = UDIS2()
     if torch.cuda.is_available():
         net = net.cuda()
 
-    # define the optimizer and learning rate
-    optimizer = optim.Adam(net.parameters(), lr=1e-4, betas=(0.9, 0.999), eps=1e-08)  # default as 0.0001
+    # 定义优化器和学习率
+    optimizer = optim.Adam(net.parameters(), lr=1e-4, betas=(0.9, 0.999), eps=1e-08)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.97)
 
-    #load the existing models if it exists
+    # 加载已有模型权重
     ckpt_list = glob.glob(MODEL_DIR + "/*.pth")
     ckpt_list.sort()
     if len(ckpt_list) != 0:
@@ -82,11 +82,10 @@ def train(args):
                 inpu1_tesnor = inpu1_tesnor.cuda()
                 inpu2_tesnor = inpu2_tesnor.cuda()
 
-            # forward, backward, update weights
             optimizer.zero_grad()
 
-            batch_out = build_model(net, inpu1_tesnor, inpu2_tesnor)
-            # result
+            batch_out = get_batch_outputs_for_train(net, inpu1_tesnor, inpu2_tesnor)
+
             output_H = batch_out['output_H']
             output_H_inv = batch_out['output_H_inv']
             warp_mesh = batch_out['warp_mesh']
@@ -95,15 +94,16 @@ def train(args):
             mesh2 = batch_out['mesh2']
             overlap = batch_out['overlap']
 
-            # calculate loss for overlapping regions
-            overlap_loss = cal_lp_loss(inpu1_tesnor, inpu2_tesnor, output_H, output_H_inv, warp_mesh, warp_mesh_mask)
-            # calculate loss for non-overlapping regions
-            nonoverlap_loss = 10*inter_grid_loss(overlap, mesh2) + 10*intra_grid_loss(mesh2)
+            # 计算重叠区域的损失
+            overlap_loss = get_overlap_loss(inpu1_tesnor, inpu2_tesnor, output_H, output_H_inv, warp_mesh, warp_mesh_mask)
+            
+            # 计算非重叠区域的损失
+            nonoverlap_loss = 10 * get_inter_grid_loss(overlap, mesh2) + 10 * get_intra_grid_loss(mesh2)
 
             total_loss = overlap_loss + nonoverlap_loss
             total_loss.backward()
 
-            # clip the gradient
+            # 裁剪梯度
             torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=3, norm_type=2)
             optimizer.step()
 

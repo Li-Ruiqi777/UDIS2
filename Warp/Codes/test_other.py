@@ -13,7 +13,7 @@ import torch.optim as optim
 
 import cv2
 
-from network import get_stitched_result, Network, build_new_ft_model
+from network import get_stitched_result, UDIS2, get_batch_outputs_for_ft
 
 import glob
 from loss import cal_lp_loss2
@@ -70,7 +70,7 @@ def train(args):
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 
     # define the network
-    net = Network()
+    net = UDIS2()
     if torch.cuda.is_available():
         net = net.cuda()
 
@@ -115,7 +115,7 @@ def train(args):
 
         optimizer.zero_grad()
 
-        batch_out = build_new_ft_model(net, input1_tensor_512, input2_tensor_512)
+        batch_out = get_batch_outputs_for_ft(net, input1_tensor_512, input2_tensor_512)
         warp_mesh = batch_out["warp_mesh"]
         warp_mesh_mask = batch_out["warp_mesh_mask"]
         rigid_mesh = batch_out["rigid_mesh"]

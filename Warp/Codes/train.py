@@ -1,79 +1,68 @@
-import argparse
 import torch
-from torch.utils.data import DataLoader
-import os
 import torch.optim as optim
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from network import get_batch_outputs_for_train, UDIS2
-from dataset import TrainDataset
-import glob
-from loss import get_overlap_loss, get_inter_grid_loss, get_intra_grid_loss
+import os
+import argparse
 import datetime
 
-warp_folder_path = "E:/DeepLearning/7_Stitch/UDIS2/Warp/"
-# path to save the summary files
-SUMMARY_DIR = os.path.join(warp_folder_path, 'summary')
-writer = SummaryWriter(log_dir=SUMMARY_DIR)
-# path to save the model files
-MODEL_DIR = os.path.join(warp_folder_path, 'model')
-# create folders if it dose not exist
-if not os.path.exists(MODEL_DIR):
-    os.makedirs(MODEL_DIR)
-if not os.path.exists(SUMMARY_DIR):
-    os.makedirs(SUMMARY_DIR)
+from loss import get_overlap_loss, get_inter_grid_loss, get_intra_grid_loss
+from network import get_batch_outputs_for_train, UDIS2
+from dataset import TrainDataset
+from utils.logger_config import *
 
+logger = logging.getLogger(__name__)
 
 def train(args):
     os.environ['CUDA_DEVICES_ORDER'] = "PCI_BUS_ID"
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     
     # 定义数据集
-    train_data = TrainDataset(data_path=args.train_path)
-    train_loader = DataLoader(dataset=train_data, batch_size=args.batch_size, num_workers=4, shuffle=True, drop_last=True, pin_memory=True)
+    train_dataset = TrainDataset(data_path=args.train_dataset_path)
+    train_dataloader = DataLoader(dataset=train_dataset, 
+                                  batch_size=args.batch_size, 
+                                  num_workers=args.num_workers, 
+                                  shuffle=True, 
+                                  pin_memory=True)
 
     # 定义网络模型
-    net = UDIS2()
+    model = UDIS2()
     if torch.cuda.is_available():
-        net = net.cuda()
+        model = model.cuda()
+    model.train()
 
     # 定义优化器和学习率
-    optimizer = optim.Adam(net.parameters(), lr=1e-4, betas=(0.9, 0.999), eps=1e-08)
+    optimizer = optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.999), eps=1e-08)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.97)
 
     # 加载已有模型权重
-    ckpt_list = glob.glob(MODEL_DIR + "/*.pth")
-    ckpt_list.sort()
-    if len(ckpt_list) != 0:
-        model_path = ckpt_list[-1]
-        checkpoint = torch.load(model_path)
-
-        net.load_state_dict(checkpoint["model"])
-        optimizer.load_state_dict(checkpoint["optimizer"])
-        start_epoch = checkpoint["epoch"]
-        glob_iter = checkpoint["glob_iter"]
+    if(args.resume):
+        check_point = torch.load(args.ckpt_path)
+        model.load_state_dict(check_point["model"])
+        optimizer.load_state_dict(check_point["optimizer"])
+        start_epoch = check_point["epoch"]
+        current_iter = check_point["glob_iter"]
         scheduler.last_epoch = start_epoch
+        # scheduler.step(start_epoch)
+        logger.info(f"load model from {args.ckpt_path}!")
+        logger.info(f"start epoch {start_epoch}")
 
-        print("load model from {}!".format(model_path))
     else:
         start_epoch = 0
-        glob_iter = 0
-        print('training from stratch!')
-
-    print("##################start training#######################")
-    score_print_fre = 300
-    iter_fre = 5
-
+        current_iter = 0
+        logger.info('training from stratch!')
+    
+    # 定义tensorboard
+    tensorboard_writer = SummaryWriter(log_dir=args.tensorboard_save_folder)
+        
+    # 开始训练
     for epoch in range(start_epoch, args.max_epoch):
 
-        print("start epoch {}".format(epoch))
-        net.train()
-        loss_sigma = 0.0
-        overlap_loss_sigma = 0.
-        nonoverlap_loss_sigma = 0.
+        average_total_loss = 0
+        average_overlap_loss = 0
+        average_nonoverlap_loss = 0
 
-        print(epoch, 'lr={:.6f}'.format(optimizer.state_dict()['param_groups'][0]['lr']))
-
-        for i, batch_value in enumerate(train_loader):
+        for idx, batch_value in enumerate(train_dataloader):
 
             inpu1_tesnor = batch_value[0].float()
             inpu2_tesnor = batch_value[1].float()
@@ -84,95 +73,88 @@ def train(args):
 
             optimizer.zero_grad()
 
-            batch_out = get_batch_outputs_for_train(net, inpu1_tesnor, inpu2_tesnor)
+            batch_outputs = get_batch_outputs_for_train(model, inpu1_tesnor, inpu2_tesnor)
 
-            output_H = batch_out['output_H']
-            output_H_inv = batch_out['output_H_inv']
-            warp_mesh = batch_out['warp_mesh']
-            warp_mesh_mask = batch_out['warp_mesh_mask']
-            mesh1 = batch_out['mesh1']
-            mesh2 = batch_out['mesh2']
-            overlap = batch_out['overlap']
+            mesh = batch_outputs['mesh']
+            overlap = batch_outputs['overlap']
 
             # 计算重叠区域的损失
-            overlap_loss = get_overlap_loss(inpu1_tesnor, inpu2_tesnor, output_H, output_H_inv, warp_mesh, warp_mesh_mask)
+            overlap_loss = get_overlap_loss(inpu1_tesnor, inpu2_tesnor, batch_outputs)
             
             # 计算非重叠区域的损失
-            nonoverlap_loss = 10 * get_inter_grid_loss(overlap, mesh2) + 10 * get_intra_grid_loss(mesh2)
+            nonoverlap_loss = 10 * get_inter_grid_loss(overlap, mesh) + 10 * get_intra_grid_loss(mesh)
 
             total_loss = overlap_loss + nonoverlap_loss
             total_loss.backward()
 
             # 裁剪梯度
-            torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=3, norm_type=2)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=3, norm_type=2)
             optimizer.step()
 
-            overlap_loss_sigma += overlap_loss.item()
-            nonoverlap_loss_sigma += nonoverlap_loss.item()
-            loss_sigma += total_loss.item()
+            average_overlap_loss += overlap_loss.item()
+            average_nonoverlap_loss += nonoverlap_loss.item()
+            average_total_loss += total_loss.item()
 
-            # Print every 10 iterations
-            if glob_iter % iter_fre == 0:
-                average_loss = loss_sigma / iter_fre
-                average_overlap_loss = overlap_loss_sigma / iter_fre
-                average_nonoverlap_loss = nonoverlap_loss_sigma / iter_fre
-                current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                print(f"Epoch[{epoch + 1}/{args.max_epoch}] Iter[{glob_iter % len(train_loader)}/{len(train_loader)}] - "
-                    f"Loss: {average_loss:.4f}  Overlap Loss: {average_overlap_loss:.4f}  "
-                    f"Non-overlap Loss: {average_nonoverlap_loss:.4f}  LR: {optimizer.state_dict()['param_groups'][0]['lr']:.8f}  "
-                    f"Time: {current_time}")
+            if current_iter % args.print_log_interval == 0:
+                average_loss = average_total_loss / args.print_log_interval
+                average_overlap_loss = average_overlap_loss / args.print_log_interval
+                average_nonoverlap_loss = average_nonoverlap_loss / args.print_log_interval
 
-            # record loss and images in tensorboard
-            if i % score_print_fre == 0 and i != 0:
-                average_loss = loss_sigma / score_print_fre
-                average_overlap_loss = overlap_loss_sigma/ score_print_fre
-                average_nonoverlap_loss = nonoverlap_loss_sigma/ score_print_fre
-                loss_sigma = 0.0
-                overlap_loss_sigma = 0.
-                nonoverlap_loss_sigma = 0.
+                logger.info(f"Epoch[{epoch + 1}/{args.max_epoch}] "
+                            f"Iter[{current_iter % len(train_dataloader)}/{len(train_dataloader)}] - "
+                            f"Loss: {average_loss:.4f}  "
+                            f"Overlap Loss: {average_overlap_loss:.4f}  "
+                            f"Nonoverlap Loss: {average_nonoverlap_loss:.4f}  "
+                            f"LR: {optimizer.state_dict()['param_groups'][0]['lr']:.8f}  "
+                        )
+                
+                if current_iter % args.tensorboard_log_interval == 0:
+                    # tensorboard_writer.add_image("inpu1", (inpu1_tesnor[0]+1.)/2., glob_iter)
+                    # tensorboard_writer.add_image("inpu2", (inpu2_tesnor[0]+1.)/2., glob_iter)
+                    # tensorboard_writer.add_image("warp_H", (output_H[0,0:3,:,:]+1.)/2., glob_iter)
+                    # tensorboard_writer.add_image("warp_mesh", (warp_mesh[0]+1.)/2., glob_iter)
+                    tensorboard_writer.add_scalar('lr', optimizer.state_dict()['param_groups'][0]['lr'], current_iter)
+                    tensorboard_writer.add_scalar('total loss', average_loss, current_iter)
+                    tensorboard_writer.add_scalar('overlap loss', average_overlap_loss, current_iter)
+                    tensorboard_writer.add_scalar('nonoverlap loss', average_nonoverlap_loss, current_iter)
+                
+                average_total_loss = 0
+                average_overlap_loss = 0
+                average_nonoverlap_loss = 0
 
-                print("Training: Epoch[{:0>3}/{:0>3}] Iteration[{:0>3}]/[{:0>3}] Total Loss: {:.4f}  Overlap Loss: {:.4f}  Non-overlap Loss: {:.4f} lr={:.8f}".format(epoch + 1, args.max_epoch, i + 1, len(train_loader),
-                                          average_loss, average_overlap_loss, average_nonoverlap_loss, optimizer.state_dict()['param_groups'][0]['lr']))
-                # Tensorboard
-                # writer.add_image("inpu1", (inpu1_tesnor[0]+1.)/2., glob_iter)
-                # writer.add_image("inpu2", (inpu2_tesnor[0]+1.)/2., glob_iter)
-                # writer.add_image("warp_H", (output_H[0,0:3,:,:]+1.)/2., glob_iter)
-                # writer.add_image("warp_mesh", (warp_mesh[0]+1.)/2., glob_iter)
-                # writer.add_scalar('lr', optimizer.state_dict()['param_groups'][0]['lr'], glob_iter)
-                # writer.add_scalar('total loss', average_loss, glob_iter)
-                # writer.add_scalar('overlap loss', average_overlap_loss, glob_iter)
-                # writer.add_scalar('nonoverlap loss', average_nonoverlap_loss, glob_iter)
-
-            glob_iter += 1
-
+            current_iter += 1
 
         scheduler.step()
-        # save model
-        if ((epoch+1) % 5 == 0 or (epoch+1)==args.max_epoch):
+
+        # 保存模型
+        if ((epoch + 1) % args.save_epoch_interval == 0 or (epoch + 1) == args.max_epoch):
             filename ='epoch' + str(epoch+1).zfill(3) + '_model.pth'
-            model_save_path = os.path.join(MODEL_DIR, filename)
-            state = {'model': net.state_dict(), 'optimizer': optimizer.state_dict(), 'epoch': epoch+1, "glob_iter": glob_iter}
+            model_save_path = os.path.join(args.model_save_folder, filename)
+            state = {
+                'model': model.state_dict(), 
+                'optimizer': optimizer.state_dict(), 
+                'epoch': epoch + 1, 
+                "glob_iter": current_iter
+            }
             torch.save(state, model_save_path)
-    print("##################end training#######################")
 
 
 if __name__=="__main__":
-    
-    print('<==================== setting arguments ===================>\n')
-
-    # create the argument parser
     parser = argparse.ArgumentParser()
 
-    # add arguments
     parser.add_argument('--gpu', type=str, default='0')
     parser.add_argument('--batch_size', type=int, default=1)
+    parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument('--max_epoch', type=int, default=200)
-    parser.add_argument('--train_path', type=str, default='E:/DeepLearning/0_DataSets/007-UDIS-D/training-ship/training')
-
-    # parse the arguments
+    parser.add_argument('--save_epoch_interval', type=int, default=5)
+    parser.add_argument('--print_log_interval', type=int, default=20)
+    parser.add_argument('--tensorboard_log_interval', type=int, default=100)
+    parser.add_argument('--resume', type=bool, default=True)
+    parser.add_argument('--train_dataset_path', type=str, default='E:/DeepLearning/0_DataSets/007-UDIS-D/training/training')
+    parser.add_argument('--ckpt_path', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/model/epoch100_model.pth')
+    parser.add_argument('--model_save_folder', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/model')
+    parser.add_argument('--tensorboard_save_folder', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/summary')
     args = parser.parse_args()
-    print(args)
 
-    # train
     train(args)
 

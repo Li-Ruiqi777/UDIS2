@@ -250,14 +250,14 @@ class UDIS2(nn.Module):
 
 def get_batch_outputs_for_train(net, ref_tensor, target_tensor, is_training=True):
     """
-    用于训练和指标计算, 计算一个batch的输出
+    用于训练和指标计算, 计算一个batch的输出, 输出图像的大小和输入图像一样
 
     1.用网络预测H的4pt和TPS的控制点的偏移
     2.计算mesh(的控制点)在网络预测的H和TPS motion后的坐标
     3.将target及其mask通过单应性矩阵变到reference坐标系下(同名像素点的在2图中一样)
     4.将reference及其mask通过单应性矩阵变到target坐标系下
     5.将target及其mask通过TPS变到reference坐标系下
-    6.使用计算重叠区域,并用一个二值图表示重叠区和非重叠区
+    6.使用计算重叠区域,并用一个二值图表示重叠区和非重叠区----?有吗
     """
     batch_size, _, img_h, img_w = ref_tensor.size()
 
@@ -337,36 +337,28 @@ def get_batch_outputs_for_train(net, ref_tensor, target_tensor, is_training=True
     overlap_zero = torch.zeros_like(overlap)
     overlap = torch.where(overlap < 0.9, overlap_one, overlap_zero)
 
-    out_dict = {}
-    out_dict.update(
+    batch_outputs = {
         #[N, 6, 512, 512]
-        output_H=warped_target_and_mask,             # 将target及其mask通过单应性矩阵变到reference坐标系下(只保留了重叠区，并使同名像素点的在2图中一样)
+        'warped_target_and_mask':warped_target_and_mask,
         #[N, 6, 512, 512]
-        output_H_inv=warped_reference_and_mask,      # 将reference及其mask通过单应性矩阵变到target坐标系下
+        'warped_reference_and_mask':warped_reference_and_mask,
         #[N, 3, 512, 512]
-        warp_mesh=tps_warped_target,            # 将target通过TPS变到reference坐标系下
+        'tps_warped_target':tps_warped_target,
         #[N, 3, 512, 512]
-        warp_mesh_mask=tps_warped_mask,  # 将target的mask通过TPS变到reference坐标系下
+        'tps_warped_mask':tps_warped_mask,
         #[N, 13, 13, 2]
-        mesh1=rigid_mesh,
+        'rigid_mesh':rigid_mesh,
         #[N, 13, 13, 2]
-        mesh2=mesh,
+        'mesh':mesh,
         #[N, 12, 12]
-        overlap=overlap,                # 在target系下的重叠区,0:重叠,1:非重叠
-    )
+        'overlap':overlap, # 在target系下的重叠区,0:重叠,1:非重叠
+    }
 
-    # batch_outputs = {
-    #     'warped_target': warped_target_and_mask[:, 0:3, :, :] - 1,
-    #     'H_warped_mask': warped_target_and_mask[:, 3:6, ...],
-    #     'warped_reference': warped_refence_and_mask[:, 0:3, :, :] - 1,
-    #     'H_inv_warped_mask': warped_refence_and_mask[:, 3:6, ...]
-    # }
-
-    return out_dict
+    return batch_outputs
 
 def get_batch_outputs_for_stitch(net, ref_tensor, target_tensor):
     """
-    用于拼接时一个batch的输出
+    用于计算拼接时一个batch的输出, 输出图像的大小和最终拼接结果图像的大小一致
     
     1.用网络预测H的4pt和TPS的控制点的偏移
     2.根据变换后控制点的坐标最值,确定stitched img的h,w大小
@@ -473,15 +465,32 @@ def get_batch_outputs_for_stitch(net, ref_tensor, target_tensor):
 
     out_dict = {}
     out_dict.update(
+        #[N, 3, output_height, output_width]
         final_warp1=translated_reference_and_mask[:, 0:3, ...] - 1, #将reference平移变换到stitched image的坐标系下
+        #[N, 3, output_height, output_width]
         final_warp1_mask=translated_reference_and_mask[:, 3:6, ...],#将reference平移变换到stitched image的坐标系下的mask
+        #[N, 3, output_height, output_width]
         final_warp2=tps_warped_target_and_mask[:, 0:3, ...] - 1,  #将target进行TPS变换到stitched image的坐标系下
+        #[N, 3, output_height, output_width]
         final_warp2_mask=tps_warped_target_and_mask[:, 3:6, ...], #将target进行TPS变换到stitched image的坐标系下的mask
         mesh1=rigid_mesh,
         mesh2=mesh_trans,
     )
 
-    return out_dict
+    batch_outputs = {
+        #[N, 3, output_height, output_width]
+        'translated_reference': translated_reference_and_mask[:, 0:3, ...] - 1,
+        #[N, 3, output_height, output_width]
+        'translated_mask': translated_reference_and_mask[:, 3:6, ...],
+        #[N, 3, output_height, output_width]
+        'tps_warped_target': tps_warped_target_and_mask[:, 0:3, ...] - 1,
+        #[N, 3, output_height, output_width]
+        'tps_warped_mask': tps_warped_target_and_mask[:, 3:6, ...],
+        'rigid_mesh': rigid_mesh,
+        'mesh_trans': mesh_trans,
+    }
+
+    return batch_outputs
 
 def get_batch_outputs_for_ft(net, input1_tensor, input2_tensor):
     """

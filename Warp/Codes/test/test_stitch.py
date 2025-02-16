@@ -40,11 +40,11 @@ def test_get_batch_outputs_for_stitch():
     # 保存结果
     image_saver = ImageSaver(save_path)
 
-    translated_reference = batch_output['final_warp1'].cpu().numpy().transpose(0, 2, 3, 1)
-    translated_mask = batch_output['final_warp1_mask'].cpu().numpy().transpose(0, 2, 3, 1)
+    translated_reference = batch_output['translated_reference'].cpu().numpy().transpose(0, 2, 3, 1)
+    translated_mask = batch_output['translated_mask'].cpu().numpy().transpose(0, 2, 3, 1)
 
-    tps_warped_target = batch_output['final_warp2'].cpu().numpy().transpose(0, 2, 3, 1)
-    tps_warped_mask = batch_output['final_warp2_mask'].cpu().numpy().transpose(0, 2, 3, 1)
+    tps_warped_target = batch_output['tps_warped_target'].cpu().numpy().transpose(0, 2, 3, 1)
+    tps_warped_mask = batch_output['tps_warped_mask'].cpu().numpy().transpose(0, 2, 3, 1)
 
     image_saver.add_image('translated_reference', de_normalize(translated_reference[0]))
     image_saver.add_image('translated_mask', de_normalize(translated_mask[0]))

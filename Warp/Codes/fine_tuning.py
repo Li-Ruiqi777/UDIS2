@@ -16,7 +16,7 @@ import cv2
 from network import get_stitched_result, UDIS2, get_batch_outputs_for_ft
 
 import glob
-from loss import cal_lp_loss2
+from loss import get_overlap_loss_ft
 import torchvision.transforms as T
 
 # import PIL
@@ -121,7 +121,7 @@ def train(args):
         rigid_mesh = batch_out["rigid_mesh"]
         mesh = batch_out["mesh"]
 
-        total_loss = cal_lp_loss2(input1_tensor_512, warp_mesh, warp_mesh_mask)
+        total_loss = get_overlap_loss_ft(input1_tensor_512, warp_mesh, warp_mesh_mask)
         total_loss.backward()
         # clip the gradient
         torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=3, norm_type=2)

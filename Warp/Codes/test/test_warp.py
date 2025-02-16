@@ -36,26 +36,18 @@ def test_get_batch_outputs_for_train():
 
     # 推理
     batch_output = get_batch_outputs_for_train(model, ref_tensor, target_tensor, False)
-    
-    # output_H = batch_output['output_H']
-    # output_H_inv = batch_output['output_H_inv']
-    # warp_mesh = batch_output['warp_mesh']
-    # warp_mesh_mask = batch_output['warp_mesh_mask']
-    # mesh1 = batch_output['mesh1']
-    # mesh2 = batch_output['mesh2']
-    # overlap = batch_output['overlap']
-    
+        
     # 保存结果
     image_saver = ImageSaver(save_path)
 
-    warped_target = batch_output['output_H'][:, 0:3, :, :].cpu().numpy().transpose(0, 2, 3, 1)
-    H_warped_mask = batch_output['output_H'][:, 3:6, :, :].cpu().numpy().transpose(0, 2, 3, 1)
+    warped_target = batch_output['warped_target_and_mask'][:, 0:3, :, :].cpu().numpy().transpose(0, 2, 3, 1)
+    H_warped_mask = batch_output['warped_target_and_mask'][:, 3:6, :, :].cpu().numpy().transpose(0, 2, 3, 1)
 
-    warped_reference = batch_output['output_H_inv'][:, 0:3, :, :].cpu().numpy().transpose(0, 2, 3, 1)
-    H_inv_warped_mask = batch_output['output_H_inv'][:, 3:6, :, :].cpu().numpy().transpose(0, 2, 3, 1)
+    warped_reference = batch_output['warped_reference_and_mask'][:, 0:3, :, :].cpu().numpy().transpose(0, 2, 3, 1)
+    H_inv_warped_mask = batch_output['warped_reference_and_mask'][:, 3:6, :, :].cpu().numpy().transpose(0, 2, 3, 1)
 
-    tps_warped_target = batch_output['warp_mesh'].cpu().numpy().transpose(0, 2, 3, 1)
-    tps_warped_mask = batch_output['warp_mesh_mask'].cpu().numpy().transpose(0, 2, 3, 1)
+    tps_warped_target = batch_output['tps_warped_target'].cpu().numpy().transpose(0, 2, 3, 1)
+    tps_warped_mask = batch_output['tps_warped_mask'].cpu().numpy().transpose(0, 2, 3, 1)
 
     image_saver.add_image('warped_target', de_normalize(warped_target[0]))
     image_saver.add_image('H_warped_mask', de_normalize(H_warped_mask[0]))

@@ -4,7 +4,6 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import os
 import argparse
-import datetime
 
 from loss import get_overlap_loss, get_inter_grid_loss, get_intra_grid_loss
 from network import get_batch_outputs_for_train, UDIS2
@@ -54,14 +53,13 @@ def train(args):
     
     # 定义tensorboard
     tensorboard_writer = SummaryWriter(log_dir=args.tensorboard_save_folder)
-        
+
+    average_total_loss = 0
+    average_overlap_loss = 0
+    average_nonoverlap_loss = 0
+
     # 开始训练
     for epoch in range(start_epoch, args.max_epoch):
-
-        average_total_loss = 0
-        average_overlap_loss = 0
-        average_nonoverlap_loss = 0
-
         for idx, batch_value in enumerate(train_dataloader):
 
             inpu1_tesnor = batch_value[0].float()
@@ -145,12 +143,12 @@ if __name__=="__main__":
     parser.add_argument('--gpu', type=str, default='0')
     parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument('--max_epoch', type=int, default=200)
-    parser.add_argument('--save_epoch_interval', type=int, default=5)
+    parser.add_argument('--max_epoch', type=int, default=300)
+    parser.add_argument('--save_epoch_interval', type=int, default=10)
     parser.add_argument('--print_log_interval', type=int, default=20)
     parser.add_argument('--tensorboard_log_interval', type=int, default=100)
-    parser.add_argument('--resume', type=bool, default=True)
-    parser.add_argument('--train_dataset_path', type=str, default='E:/DeepLearning/0_DataSets/007-UDIS-D/training/training')
+    parser.add_argument('--resume', type=bool, default=False)
+    parser.add_argument('--train_dataset_path', type=str, default='E:/DeepLearning/0_DataSets/007-UDIS-D-subset/train')
     parser.add_argument('--ckpt_path', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/model/epoch100_model.pth')
     parser.add_argument('--model_save_folder', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/model')
     parser.add_argument('--tensorboard_save_folder', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/summary')

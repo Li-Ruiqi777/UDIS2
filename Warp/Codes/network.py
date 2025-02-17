@@ -407,8 +407,8 @@ def get_batch_outputs_for_stitch(net, ref_tensor, target_tensor):
     out_width = width_max - width_min
     out_height = height_max - height_min
 
-    print(f"x_max: {width_max}, x_min: {width_min}, y_max: {height_max}, y_min: {height_min}")
-    print(f"output_width: {out_width}, output_height: {out_height}")
+    # print(f"x_max: {width_max}, x_min: {width_min}, y_max: {height_max}, y_min: {height_min}")
+    # print(f"output_width: {out_width}, output_height: {out_height}")
 
     normalize_mat = torch.tensor(
         [

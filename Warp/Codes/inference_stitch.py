@@ -4,11 +4,13 @@
 import torch
 from torch.utils.data import DataLoader
 import argparse
-import cv2
 
 from network import get_batch_outputs_for_stitch, UDIS2
 from utils.ImageSaver import ImageSaver
 from dataset import *
+from utils.logger_config import *
+
+logger = logging.getLogger(__name__)
 
 @torch.no_grad()
 def test_stitch(args):
@@ -32,7 +34,7 @@ def test_stitch(args):
 
     # 加载权重
     check_point = torch.load(args.ckpt_path)
-    print("load model from {}!".format(args.ckpt_path))
+    logger.info(f"load model from {args.ckpt_path}!")
     model.load_state_dict(check_point["model"])
 
     image_saver = ImageSaver(args.save_path)
@@ -49,7 +51,7 @@ def test_stitch(args):
         batch_outputs = get_batch_outputs_for_stitch(model, inpu1_tesnor, inpu2_tesnor)
         save_stitch_result(batch_outputs, image_saver, idx)
 
-        print("save stitch result for idx = {}".format(idx + 1))
+        logger.info(f"save stitch result for idx = {idx + 1}")
 
 def save_stitch_result(batch_outputs, image_saver, idx):
     translated_reference = batch_outputs['translated_reference'].cpu().numpy().transpose(0, 2, 3, 1)
@@ -88,9 +90,9 @@ if __name__ == "__main__":
     parser.add_argument("--gpu", type=str, default="0")
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument('--ckpt_path', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/model/epoch200_model.pth')
+    parser.add_argument('--ckpt_path', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/model/epoch100_model.pth')
     parser.add_argument('--save_path', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/results/stitch')
-    parser.add_argument("--test_dataset_path",type=str, default="E:/DeepLearning/0_DataSets/007-UDIS-D/testing/testing")
+    parser.add_argument("--test_dataset_path",type=str, default="E:/DeepLearning/0_DataSets/007-UDIS-D-subset/test")
     args = parser.parse_args()
 
     test_stitch(args)

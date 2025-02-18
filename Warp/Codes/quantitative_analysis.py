@@ -37,7 +37,10 @@ def quantitative_analysis(args):
     # 加载权重
     check_point = torch.load(args.ckpt_path)
     logger.info(f"load model from {args.ckpt_path}!")
-    model.load_state_dict(check_point["model"])
+    model.load_state_dict(check_point["model"], strict=False)
+
+    # for key in check_point["model"].keys():
+    #     print(key)
 
     psnr_list = []
     ssim_list = []
@@ -115,7 +118,7 @@ if __name__ == "__main__":
     parser.add_argument("--gpu", type=str, default="0")
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--test_dataset_path", type=str, default="E:/DeepLearning/0_DataSets/007-UDIS-D-subset/test/",)
-    parser.add_argument('--ckpt_path', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/model/2-15-epoch100_model.pth')
+    parser.add_argument('--ckpt_path', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/model/without_pretrain/epoch110_model.pth')
     args = parser.parse_args()
     
     quantitative_analysis(args)

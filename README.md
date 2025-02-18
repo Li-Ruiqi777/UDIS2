@@ -1,47 +1,52 @@
-# <p align="center">Parallax-Tolerant Unsupervised Deep Image Stitching (UDIS++ [paper](https://arxiv.org/abs/2302.08207))</p>
-<p align="center">Lang Nie*, Chunyu Lin*, Kang Liao*, Shuaicheng Liu`, Yao Zhao*</p>
-<p align="center">* Institute of Information Science, Beijing Jiaotong University</p>
-<p align="center">` School of Information and Communication Engineering, University of Electronic Science and Technology of China</p>
+#UDIS2
 
-![image](https://github.com/nie-lang/UDIS2/blob/main/fig1.png)
-
-## Dataset (UDIS-D)
-We use the UDIS-D dataset to train and evaluate our method. Please refer to [UDIS](https://github.com/nie-lang/UnsupervisedDeepImageStitching) for more details about this dataset.
-
-
-## Code
-#### Requirement
-* numpy 1.19.5
-* pytorch 1.7.1
-* scikit-image 0.15.0
-* tensorboard 2.9.0
-
-We implement this work with Ubuntu, 3090Ti, and CUDA11. Refer to [environment.yml](https://github.com/nie-lang/UDIS2/blob/main/environment.yml) for more details.
-
-#### How to run it
-Similar to UDIS, we also implement this solution in two stages:
-* Stage 1 (unsupervised warp): please refer to  [Warp/readme.md](https://github.com/nie-lang/UDIS2/blob/main/Warp/readme.md).
-* Stage 2 (unsupervised composition): please refer to [Composition/readme.md](https://github.com/nie-lang/UDIS2/blob/main/Composition/readme.md).
+## TODO
 
 
 
-## Meta
-If you have any questions about this project, please feel free to drop me an email.
+## 开发中遇到的问题
 
-NIE Lang -- nielang@bjtu.edu.cn
-```
-@inproceedings{nie2023parallax,
-  title={Parallax-Tolerant Unsupervised Deep Image Stitching},
-  author={Nie, Lang and Lin, Chunyu and Liao, Kang and Liu, Shuaicheng and Zhao, Yao},
-  booktitle={Proceedings of the IEEE/CVF International Conference on Computer Vision},
-  pages={7399--7408},
-  year={2023}
-}
+1.如何在主干网络加注意力机制？
+
+目前的主干网络是ResNet，在它里面加注意力机制其实有2个思路：
+
+- 加在残差块里面（也就是`resnet.py`里的`BasicBlock`类或者`BottleNeck`类）
+- 加在残差块之间
+
+ResNet其实不同变种的基本结构类似，包含的几个大层都是固定的，只是里面的残差块的数目不同
+
+```python
+def _forward_impl(self, x: Tensor) -> Tensor:
+    # See note [TorchScript super()]
+    x = self.conv1(x)
+    x = self.bn1(x)
+    x = self.relu(x)
+    x = self.maxpool(x)
+
+    x = self.layer1(x)
+    x = self.layer2(x)
+    x = self.layer3(x)
+    x = self.layer4(x)
+
+    x = self.avgpool(x)
+    x = torch.flatten(x, 1)
+    x = self.fc(x)
+
+    return x
+
 ```
 
+因此，可以把注意力机制加在几个大层(layer1，layer2...)之间
 
-## References
-[1] L. Nie, C. Lin, K. Liao, M. Liu, and Y. Zhao, “A view-free image stitching network based on global homography,” Journal of Visual Communication and Image Representation, p. 102950, 2020.  
-[2] L. Nie, C. Lin, K. Liao, and Y. Zhao. Learning edge-preserved image stitching from multi-scale deep homography[J]. Neurocomputing, 2022, 491: 533-543.   
-[3] L. Nie, C. Lin, K. Liao, S. Liu, and Y. Zhao. Unsupervised deep image stitching: Reconstructing stitched features to images[J]. IEEE Transactions on Image Processing, 2021, 30: 6184-6197.   
-[4] L. Nie, C. Lin, K. Liao, S. Liu, and Y. Zhao. Deep rectangling for image stitching: a learning baseline[C]//Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. 2022: 5740-5748.   
+> 由于使用方法二的计算量更少，且可以使用预训练权重，所以采用方法二
+
+注意：修改代码时，可以直接改`resnet.py`，也可以修改UDIS2的模型定义，我选择的是后者
+
+参考链接：
+
+- [pytorch中加入注意力机制（CBAM），以ResNet为例。解析到底要不要用ImageNet预训练？如何加预训练参数？ - 知乎](https://zhuanlan.zhihu.com/p/99261200)
+- [【深度学习】Pytorch：在 ResNet 中加入注意力机制_注意力机制resnet-CSDN博客](https://blog.csdn.net/2303_80346267/article/details/145226698)
+
+
+
+2.注意力机制要加几个呢？

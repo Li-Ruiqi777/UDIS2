@@ -84,50 +84,50 @@ class UDIS2(nn.Module):
             nn.Linear(in_features=2048, out_features=(grid_w+1)*(grid_h+1)*2, bias=True)
         )
 
+        self.initailize_weights()
 
+        ssl._create_default_https_context = ssl._create_unverified_context
+        resnet50_model = models.resnet.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+
+        self.feature_extractor_stage1 = nn.Sequential(
+            resnet50_model.conv1,
+            resnet50_model.bn1,
+            resnet50_model.relu,
+            resnet50_model.maxpool,
+            resnet50_model.layer1,
+            resnet50_model.layer2,
+        )
+
+        self.feature_extractor_stage2 = nn.Sequential(
+            resnet50_model.layer3
+        )
+    
+    def initailize_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight)
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
-
-        ssl._create_default_https_context = ssl._create_unverified_context
-        resnet50_model = models.resnet.resnet50(weights=models.ResNet50_Weights.DEFAULT)
-
-        self.feature_extractor_stage1, self.feature_extractor_stage2 = self.get_res50_FeatureMap(resnet50_model)
-
-    def get_res50_FeatureMap(self, resnet50_model):
-
-        layers_list = []
-
-        layers_list.append(resnet50_model.conv1)
-        layers_list.append(resnet50_model.bn1)
-        layers_list.append(resnet50_model.relu)
-        layers_list.append(resnet50_model.maxpool)
-        layers_list.append(resnet50_model.layer1)
-        layers_list.append(resnet50_model.layer2)
-
-        feature_extractor_stage1 = nn.Sequential(*layers_list)
-
-        feature_extractor_stage2 = nn.Sequential(resnet50_model.layer3)
-
-        # layers_list.append(resnet50_model.layer3)
-
-        return feature_extractor_stage1, feature_extractor_stage2
-
+                
     # 返回H中4点的偏移以及TPS中各控制点的偏移
     def forward(self, input1_tesnor, input2_tesnor):
         batch_size, _, img_h, img_w = input1_tesnor.size()
 
+        # [N, 512, 64, 64]
         feature_1_64 = self.feature_extractor_stage1(input1_tesnor)  # refrence的1/8
+        # [N, 1024, 32, 32]
         feature_1_32 = self.feature_extractor_stage2(feature_1_64)  # refrence的1/16
 
+        # [N, 512, 64, 64]
         feature_2_64 = self.feature_extractor_stage1(input2_tesnor)  # target的1/8
+        # [N, 1024, 32, 32]
         feature_2_32 = self.feature_extractor_stage2(feature_2_64)  # target的1/16
 
-        ######### stage 1
+        # starge1: 计算H_motion
+        # [N, 2, 32, 32]
         correlation_32 = self.CCL(feature_1_32, feature_2_32)
+        
         temp_1 = self.regressNet1_part1(correlation_32)
         temp_1 = temp_1.view(temp_1.size()[0], -1)
         offset_1 = self.regressNet1_part2(temp_1)
@@ -158,12 +158,12 @@ class UDIS2(nn.Module):
         H_mat = torch.matmul(torch.matmul(M_tile_inv, H), M_tile)
 
         # 将全局的单应性变换H施加到target上
-        warp_feature_2_64 = torch_homo_transform.transformer(
-            feature_2_64, H_mat, (int(img_h / 8), int(img_w / 8))
-        )
+        warp_feature_2_64 = torch_homo_transform.transformer(feature_2_64, H_mat, (int(img_h / 8), int(img_w / 8)))
 
-        ######### stage 2
+        # starge2: 计算Mesh motion
+        # [N, 2, 64, 64]
         correlation_64 = self.CCL(feature_1_64, warp_feature_2_64)
+
         temp_2 = self.regressNet2_part1(correlation_64)
         temp_2 = temp_2.view(temp_2.size()[0], -1)
         offset_2 = self.regressNet2_part2(temp_2)  # 计算TPS中各控制点的偏移

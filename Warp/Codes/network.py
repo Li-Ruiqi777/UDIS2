@@ -95,8 +95,6 @@ class UDIS2(nn.Module):
         ssl._create_default_https_context = ssl._create_unverified_context
         resnet50_model = models.resnet.resnet50(weights=models.ResNet50_Weights.DEFAULT)
 
-        if torch.cuda.is_available():
-            resnet50_model = resnet50_model.cuda()
         self.feature_extractor_stage1, self.feature_extractor_stage2 = self.get_res50_FeatureMap(resnet50_model)
 
     def get_res50_FeatureMap(self, resnet50_model):

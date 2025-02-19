@@ -2,10 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import grid_res
-
-grid_h = grid_res.GRID_H
-grid_w = grid_res.GRID_W
+import utils.constant as constant
+grid_h = constant.GRID_H
+grid_w = constant.GRID_W
 
 
 def get_norm_loss(img1, img2, l_num=1):

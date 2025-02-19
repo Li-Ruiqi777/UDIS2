@@ -8,13 +8,13 @@ import utils.torch_DLT as torch_DLT
 import utils.torch_homo_transform as torch_homo_transform
 import utils.torch_tps_transform as torch_tps_transform
 from utils.misc import *
+import utils.constant as constant
 
 from modules import *
 
-import grid_res
-
-grid_h = grid_res.GRID_H
-grid_w = grid_res.GRID_W
+grid_h = constant.GRID_H
+grid_w = constant.GRID_W
+device = constant.device
 
 class UDIS2(nn.Module):
     def __init__(self):
@@ -135,15 +135,15 @@ class UDIS2(nn.Module):
         
         temp_1 = self.regressNet1_part1(correlation_32)
         temp_1 = temp_1.view(temp_1.size()[0], -1)
+        # [N, 8]
         offset_1 = self.regressNet1_part2(temp_1)
-        H_motion_1 = offset_1.reshape(-1, 4, 2)  # 计算4-pt的偏移量
+        # [N, 4, 2]
+        H_motion_1 = offset_1.reshape(-1, 4, 2)
 
-        src_p = torch.tensor([[0.0, 0.0], [img_w, 0.0], [0.0, img_h], [img_w, img_h]])
-        if torch.cuda.is_available():
-            src_p = src_p.cuda()
+        src_p = torch.FloatTensor([[0.0, 0.0], [img_w, 0.0], [0.0, img_h], [img_w, img_h]]).to(device)
         src_p = src_p.unsqueeze(0).expand(batch_size, -1, -1)
-        dst_p = src_p + H_motion_1  # 将偏移施加到点上
-        H = torch_DLT.tensor_DLT(src_p / 8, dst_p / 8)  # 由DLT计算H
+        dst_p = src_p + H_motion_1
+        H = torch_DLT.tensor_DLT(src_p / 8, dst_p / 8)
         
         # 这里之所以/8是因为输出feature map的尺寸是原图的1/8
         M_tensor = torch.tensor(
@@ -152,10 +152,8 @@ class UDIS2(nn.Module):
                 [0.0, img_h / 8 / 2.0, img_h / 8 / 2.0],
                 [0.0, 0.0, 1.0],
             ]
-        )
+        ).to(device)
 
-        if torch.cuda.is_available():
-            M_tensor = M_tensor.cuda()
 
         M_tile = M_tensor.unsqueeze(0).expand(batch_size, -1, -1)
         M_tensor_inv = torch.inverse(M_tensor)
@@ -171,6 +169,7 @@ class UDIS2(nn.Module):
 
         temp_2 = self.regressNet2_part1(correlation_64)
         temp_2 = temp_2.view(temp_2.size()[0], -1)
+        # [N, (grid_w+1)*(grid_h+1)*2]
         offset_2 = self.regressNet2_part2(temp_2)  # 计算TPS中各控制点的偏移
 
         return offset_1, offset_2
@@ -190,9 +189,7 @@ class UDIS2(nn.Module):
         norm_feature_2 = F.normalize(feature_2, p=2, dim=1)
         # print(norm_feature_2.size())
 
-        patches = self.extract_patches(norm_feature_2)
-        if torch.cuda.is_available():
-            patches = patches.cuda()
+        patches = self.extract_patches(norm_feature_2).to(device)
 
         matching_filters = patches.reshape(
             (
@@ -220,25 +217,19 @@ class UDIS2(nn.Module):
 
         channel = match_vol.size()[1]
 
-        h_one = torch.linspace(0, h - 1, h)
-        one1w = torch.ones(1, w)
-        if torch.cuda.is_available():
-            h_one = h_one.cuda()
-            one1w = one1w.cuda()
+        h_one = torch.linspace(0, h - 1, h).to(device)
+        one1w = torch.ones(1, w).to(device)
+
         h_one = torch.matmul(h_one.unsqueeze(1), one1w)
         h_one = h_one.unsqueeze(0).unsqueeze(0).expand(bs, channel, -1, -1)
 
-        w_one = torch.linspace(0, w - 1, w)
-        oneh1 = torch.ones(h, 1)
-        if torch.cuda.is_available():
-            w_one = w_one.cuda()
-            oneh1 = oneh1.cuda()
+        w_one = torch.linspace(0, w - 1, w).to(device)
+        oneh1 = torch.ones(h, 1).to(device)
+ 
         w_one = torch.matmul(oneh1, w_one.unsqueeze(0))
         w_one = w_one.unsqueeze(0).unsqueeze(0).expand(bs, channel, -1, -1)
 
-        c_one = torch.linspace(0, channel - 1, channel)
-        if torch.cuda.is_available():
-            c_one = c_one.cuda()
+        c_one = torch.linspace(0, channel - 1, channel).to(device)
         c_one = c_one.unsqueeze(0).unsqueeze(2).unsqueeze(3).expand(bs, -1, h, w)
 
         flow_h = match_vol * (c_one // w - h_one)
@@ -273,9 +264,7 @@ def get_batch_outputs_for_train(net, ref_tensor, target_tensor, is_training=True
     H_motion = H_motion.reshape(-1, 4, 2)
     mesh_motion = mesh_motion.reshape(-1, grid_h + 1, grid_w + 1, 2)
 
-    src_p = torch.tensor([[0.0, 0.0], [img_w, 0.0], [0.0, img_h], [img_w, img_h]])
-    if torch.cuda.is_available():
-        src_p = src_p.cuda()
+    src_p = torch.FloatTensor([[0.0, 0.0], [img_w, 0.0], [0.0, img_h], [img_w, img_h]]).to(device)
     src_p = src_p.unsqueeze(0).expand(batch_size, -1, -1)
     dst_p = src_p + H_motion
 
@@ -291,7 +280,7 @@ def get_batch_outputs_for_train(net, ref_tensor, target_tensor, is_training=True
             [0.0, 2.0/img_h, -1.0],
             [0.0, 0.0, 1.0],
         ]
-    )
+    ).to(device)
 
     denormalize_mat = torch.tensor(
         [
@@ -299,14 +288,9 @@ def get_batch_outputs_for_train(net, ref_tensor, target_tensor, is_training=True
             [0.0, img_h/2.0, img_h/2.0],
             [0.0, 0.0, 1.0],
         ]
-    )
+    ).to(device)
 
-    mask = torch.ones_like(target_tensor)
-
-    if torch.cuda.is_available():
-        normalize_mat = normalize_mat.cuda()
-        denormalize_mat = denormalize_mat.cuda()
-        mask = mask.cuda()
+    mask = torch.ones_like(target_tensor).to(device)
 
     denormalize_mat = denormalize_mat.unsqueeze(0).expand(batch_size, -1, -1)
     normalize_mat = normalize_mat.unsqueeze(0).expand(batch_size, -1, -1)
@@ -384,9 +368,7 @@ def get_batch_outputs_for_stitch(net, ref_tensor, target_tensor):
         [mesh_motion[..., 0] * img_w / 512, mesh_motion[..., 1] * img_h / 512], 3
     )
 
-    src_p = torch.tensor([[0.0, 0.0], [img_w, 0.0], [0.0, img_h], [img_w, img_h]])
-    if torch.cuda.is_available():
-        src_p = src_p.cuda()
+    src_p = torch.FloatTensor([[0.0, 0.0], [img_w, 0.0], [0.0, img_h], [img_w, img_h]]).to(device)
     src_p = src_p.unsqueeze(0).expand(batch_size, -1, -1)
     dst_p = src_p + H_motion
 
@@ -419,7 +401,7 @@ def get_batch_outputs_for_stitch(net, ref_tensor, target_tensor):
             [0.0, 2.0/img_h, -1.0],
             [0.0, 0.0, 1.0],
         ]
-    )
+    ).to(device)
 
     denormalize_mat = torch.tensor(
         [
@@ -427,7 +409,7 @@ def get_batch_outputs_for_stitch(net, ref_tensor, target_tensor):
             [0.0, out_height / 2.0, out_height / 2.0],
             [0.0, 0.0, 1.0],
         ]
-    )
+    ).to(device)
 
     reference_translation_mat = torch.tensor(
         [
@@ -435,15 +417,9 @@ def get_batch_outputs_for_stitch(net, ref_tensor, target_tensor):
             [0.0, 1.0, height_min],
             [0.0, 0.0, 1.0]
          ]
-    )
+    ).to(device)
 
-    mask = torch.ones_like(target_tensor)
-
-    if torch.cuda.is_available():
-        denormalize_mat = denormalize_mat.cuda()
-        normalize_mat = normalize_mat.cuda()
-        reference_translation_mat = reference_translation_mat.cuda()
-        mask = mask.cuda()        
+    mask = torch.ones_like(target_tensor).to(device)     
 
     reference_translation_mat = torch.matmul(torch.matmul(normalize_mat, reference_translation_mat), denormalize_mat).unsqueeze(0)
     
@@ -515,9 +491,7 @@ def get_batch_outputs_for_ft(net, input1_tensor, input2_tensor):
     # mesh_motion = torch.stack([mesh_motion[...,0]*img_w/512, mesh_motion[...,1]*img_h/512], 3)
 
     # initialize the source points bs x 4 x 2
-    src_p = torch.tensor([[0.0, 0.0], [img_w, 0.0], [0.0, img_h], [img_w, img_h]])
-    if torch.cuda.is_available():
-        src_p = src_p.cuda()
+    src_p = torch.FloatTensor([[0.0, 0.0], [img_w, 0.0], [0.0, img_h], [img_w, img_h]]).to(device)
     src_p = src_p.unsqueeze(0).expand(batch_size, -1, -1)
     # target points
     dst_p = src_p + H_motion
@@ -534,9 +508,8 @@ def get_batch_outputs_for_ft(net, input1_tensor, input2_tensor):
     norm_rigid_mesh = get_norm_mesh(rigid_mesh, img_h, img_w)
     norm_mesh = get_norm_mesh(mesh, img_h, img_w)
 
-    mask = torch.ones_like(input2_tensor)
-    if torch.cuda.is_available():
-        mask = mask.cuda()
+    mask = torch.ones_like(input2_tensor).to(device)
+
     output_tps = torch_tps_transform.transformer(
         torch.cat((input2_tensor, mask), 1), norm_mesh, norm_rigid_mesh, (img_h, img_w)
     )
@@ -601,9 +574,7 @@ def get_stitched_result(input1_tensor, input2_tensor, rigid_mesh, mesh):
         int(torch.abs(width_min)) : int(torch.abs(width_min)) + img_w,
     ] = 255
 
-    mask = torch.ones_like(input2_tensor)
-    if torch.cuda.is_available():
-        mask = mask.cuda()
+    mask = torch.ones_like(input2_tensor).to(device)
 
     # get warped img2
     mesh_trans = torch.stack([mesh[..., 0] - width_min, mesh[..., 1] - height_min], 3)

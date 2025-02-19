@@ -11,7 +11,9 @@ import skimage
 from network import get_batch_outputs_for_train, UDIS2
 from dataset import *
 from utils.logger_config import *
+from utils import constant
 
+device = constant.device
 logger = logging.getLogger(__name__)
 
 @torch.no_grad()
@@ -29,9 +31,7 @@ def quantitative_analysis(args):
         drop_last=False,
     )
 
-    model = UDIS2()
-    if torch.cuda.is_available():
-        model = model.cuda()
+    model = UDIS2().to(device)
     model.eval()
 
     # 加载权重
@@ -39,7 +39,7 @@ def quantitative_analysis(args):
     logger.info(f"load model from {args.ckpt_path}!")
     model.load_state_dict(check_point["model"], strict=False)
 
-    # for key in check_point["model"].keys():
+    # for key in model.state_dict().keys():
     #     print(key)
 
     psnr_list = []
@@ -47,13 +47,8 @@ def quantitative_analysis(args):
     
     for i, batch_value in enumerate(test_dataloader):
 
-        inpu1_tesnor = batch_value[0].float()
-        inpu2_tesnor = batch_value[1].float()
-
-        if torch.cuda.is_available():
-            inpu1_tesnor = inpu1_tesnor.cuda()
-            inpu2_tesnor = inpu2_tesnor.cuda()
-
+        inpu1_tesnor = batch_value[0].float().to(device)
+        inpu2_tesnor = batch_value[1].float().to(device)
     
         batch_outputs = get_batch_outputs_for_train(model, inpu1_tesnor, inpu2_tesnor, is_training=False)
 

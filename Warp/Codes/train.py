@@ -2,6 +2,7 @@ import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from thop import profile
 import os
 import argparse
 
@@ -9,7 +10,10 @@ from loss import get_overlap_loss, get_inter_grid_loss, get_intra_grid_loss
 from network import get_batch_outputs_for_train, UDIS2
 from dataset import TrainDataset
 from utils.logger_config import *
+from utils import constant
+from UANet import UANet
 
+device = constant.device
 logger = logging.getLogger(__name__)
 
 def train(args):
@@ -25,9 +29,7 @@ def train(args):
                                   pin_memory=True)
 
     # 定义网络模型
-    model = UDIS2()
-    if torch.cuda.is_available():
-        model = model.cuda()
+    model = UANet().to(device)
     model.train()
 
     # 定义优化器和学习率
@@ -42,7 +44,7 @@ def train(args):
         start_epoch = check_point["epoch"]
         current_iter = check_point["glob_iter"]
         scheduler.last_epoch = start_epoch
-        # scheduler.step(start_epoch)
+    
         logger.info(f"load model from {args.ckpt_path}!")
         logger.info(f"start epoch {start_epoch}")
 
@@ -62,12 +64,13 @@ def train(args):
     for epoch in range(start_epoch, args.max_epoch):
         for idx, batch_value in enumerate(train_dataloader):
 
-            inpu1_tesnor = batch_value[0].float()
-            inpu2_tesnor = batch_value[1].float()
-
-            if torch.cuda.is_available():
-                inpu1_tesnor = inpu1_tesnor.cuda()
-                inpu2_tesnor = inpu2_tesnor.cuda()
+            inpu1_tesnor = batch_value[0].float().to(device)
+            inpu2_tesnor = batch_value[1].float().to(device)
+            
+            if(epoch == 0 and idx == 0):
+                macs, params = profile(model, inputs=[inpu1_tesnor, inpu2_tesnor])
+                logger.info("Number of Params: %.2f M" % (params / 1e6))
+                logger.info("Number of MACs: %.2f G" % (macs / 1e9))
 
             optimizer.zero_grad()
 

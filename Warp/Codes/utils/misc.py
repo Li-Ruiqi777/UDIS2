@@ -3,9 +3,12 @@ import cv2
 import numpy as np
 import torch
 
-import grid_res
-grid_h = grid_res.GRID_H
-grid_w = grid_res.GRID_W
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
+import constant
+grid_h = constant.GRID_H
+grid_w = constant.GRID_W
 
 resize_512 = T.Resize((512, 512), antialias=True)
 

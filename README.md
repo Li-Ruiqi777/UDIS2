@@ -2,6 +2,9 @@
 
 ## TODO
 
+- [ ] 重新搞个BackBone，还是先H再Mesh但不用ResNet，重新封装个类
+- [ ] 看论文了解注意力机制一般加载哪里？加几个?
+
 
 
 ## 开发中遇到的问题
@@ -46,6 +49,7 @@ def _forward_impl(self, x: Tensor) -> Tensor:
 
 - [pytorch中加入注意力机制（CBAM），以ResNet为例。解析到底要不要用ImageNet预训练？如何加预训练参数？ - 知乎](https://zhuanlan.zhihu.com/p/99261200)
 - [【深度学习】Pytorch：在 ResNet 中加入注意力机制_注意力机制resnet-CSDN博客](https://blog.csdn.net/2303_80346267/article/details/145226698)
+- [HAM:Hybrid attention module神经网络中混合注意力模块代码全网首次开源复现 - 知乎](https://zhuanlan.zhihu.com/p/555252748)
 
 
 

@@ -9,7 +9,9 @@ from network import get_batch_outputs_for_stitch, UDIS2
 from utils.ImageSaver import ImageSaver
 from dataset import *
 from utils.logger_config import *
+from utils import constant
 
+device = constant.device
 logger = logging.getLogger(__name__)
 
 @torch.no_grad()
@@ -27,10 +29,8 @@ def test_stitch(args):
         pin_memory=True,
     )
 
-    model = UDIS2()
+    model = UDIS2().to(device)
     model.eval()
-    if torch.cuda.is_available():
-        model = model.cuda()
 
     # 加载权重
     check_point = torch.load(args.ckpt_path)
@@ -41,12 +41,8 @@ def test_stitch(args):
 
     for idx, batch_value in enumerate(test_dataloader):
 
-        inpu1_tesnor = batch_value[0].float()
-        inpu2_tesnor = batch_value[1].float()
-
-        if torch.cuda.is_available():
-            inpu1_tesnor = inpu1_tesnor.cuda()
-            inpu2_tesnor = inpu2_tesnor.cuda()
+        inpu1_tesnor = batch_value[0].float().to(device)
+        inpu2_tesnor = batch_value[1].float().to(device)
 
         batch_outputs = get_batch_outputs_for_stitch(model, inpu1_tesnor, inpu2_tesnor)
         save_stitch_result(batch_outputs, image_saver, idx)

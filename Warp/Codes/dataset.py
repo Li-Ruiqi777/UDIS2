@@ -17,7 +17,11 @@ class TrainDataset(Dataset):
 
         datas = glob.glob(os.path.join(self.train_path, "*"))
         for data in sorted(datas):
-            data_name = data.split("\\")[-1]
+            data_name = None
+            if os.name == "nt":
+                data_name = data.split("\\")[-1]
+            else:
+                data_name = data.split("/")[-1]
             if data_name == "input1" or data_name == "input2":
                 self.datas[data_name] = {}
                 self.datas[data_name]["path"] = data
@@ -69,7 +73,11 @@ class TestDataset(Dataset):
 
         datas = glob.glob(os.path.join(self.test_path, "*"))
         for data in sorted(datas):
-            data_name = data.split("\\")[-1]  # windows是\\ , Ubuntu是/
+            data_name = None
+            if os.name == "nt":
+                data_name = data.split("\\")[-1]
+            else:
+                data_name = data.split("/")[-1]
             if data_name == "input1" or data_name == "input2":
                 self.datas[data_name] = {}
                 self.datas[data_name]["path"] = data

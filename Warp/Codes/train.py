@@ -29,7 +29,7 @@ def train(args):
                                   pin_memory=True)
 
     # 定义网络模型
-    model = UANet().to(device)
+    model = UDIS2().to(device)
     model.train()
 
     # 定义优化器和学习率
@@ -156,6 +156,12 @@ if __name__=="__main__":
     parser.add_argument('--model_save_folder', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/model')
     parser.add_argument('--tensorboard_save_folder', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/summary')
     args = parser.parse_args()
+
+    if(not os.path.exists(args.tensorboard_save_folder)):
+        os.makedirs(args.tensorboard_save_folder)
+        
+    if(not os.path.exists(args.model_save_folder)):
+        os.makedirs(args.model_save_folder)
 
     train(args)
 

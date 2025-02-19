@@ -42,31 +42,41 @@ class ResBlock(nn.Module):
         return F.relu(out)
 
 class HomoRegressNet(nn.Module):
-    def __init__(self, input_channels=2, feat_dim=256):
+    def __init__(self, input_feat_size=[32, 32]):
         super().__init__()
-        
-        # 特征提取主干
-        self.feature_net = nn.Sequential(
-            nn.Conv2d(input_channels, 64, 7, stride=2, padding=3),  # 1/2
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            ResBlock(64),
-            nn.Conv2d(64, 128, 5, stride=2, padding=2),  # 1/4
-            nn.BatchNorm2d(128),
-            ResBlock(128),
-            nn.Conv2d(128, 256, 3, stride=2, padding=1),  # 1/8
-            nn.BatchNorm2d(256),
-            ResBlock(256),
-            ChannelAttention(256),
-            nn.AdaptiveAvgPool2d(1)  # 全局特征
+        self.feat_h  = input_feat_size[0]
+        self.feat_w  = input_feat_size[1]
+
+        # 下采样1/8
+        self.stage1 = nn.Sequential(
+            nn.Conv2d(2, 64, kernel_size=3, padding=1, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, 2),
+
+            nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, 128, kernel_size=3, padding=1, bias=False),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, 2),
+
+            nn.Conv2d(128, 256, kernel_size=3, padding=1, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1, bias=False),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, 2)
         )
         
-        # 回归头
-        self.regressor = nn.Sequential(
-            nn.Linear(256, feat_dim),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(feat_dim, 8)  # 输出8个参数
+        self.stage2 = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(in_features=256 * self.feat_h//8 * self.feat_w//8, out_features=4096, bias=True),
+            nn.ReLU(inplace=True),
+
+            nn.Linear(in_features=4096, out_features=1024, bias=True),
+            nn.ReLU(inplace=True),
+
+            nn.Linear(in_features=1024, out_features=8, bias=True)
         )
         
         # 初始化权重
@@ -79,13 +89,12 @@ class HomoRegressNet(nn.Module):
                 
     def forward(self, x):
         # x shape: [N, 2, H, W]
-        features = self.feature_net(x)  # [N, 256, 1, 1]
-        features = features.view(features.size(0), -1)  # [N, 256]
-        params = self.regressor(features)  # [N, 8]
-        return params.reshape(-1, 4, 2)    # [N, 4, 2]
+        x = self.stage1(x) # [N, 256, H/4, W/4]
+        x = self.stage2(x) # [N, 8]
+        return x.reshape(-1, 4, 2)    # [N, 4, 2]
 
 if __name__ == '__main__':
     model = HomoRegressNet()
-    feature = torch.rand(1, 2, 16, 16)
+    feature = torch.rand(1, 2, 32, 32)
     ouput = model(feature)
     print(ouput.shape)

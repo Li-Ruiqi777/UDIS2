@@ -3,9 +3,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class MeshRegressNet(nn.Module):
-    def __init__(self, grid_size, input_dim=2):
+    def __init__(self, grid_size, input_feat_size=[64, 64], input_dim=2):
         super().__init__()
-        self.grid_w, self.grid_h = grid_size
+        self.grid_h, self.grid_w = grid_size
+        self.feat_h  = input_feat_size[0]
+        self.feat_w  = input_feat_size[1]
+        # 下采样1/16
         self.stage1 = nn.Sequential(
             nn.Conv2d(input_dim, 64, kernel_size=3, padding=1, bias=False),
             nn.ReLU(inplace=True),
@@ -29,18 +32,18 @@ class MeshRegressNet(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(512, 512, kernel_size=3, padding=1, bias=False),
             nn.ReLU(inplace=True),
-            
-            nn.AdaptiveAvgPool2d([1, 1]),
+            nn.MaxPool2d(2, 2),
         )
 
         self.stage2 = nn.Sequential(
-            nn.Linear(in_features=512, out_features=256, bias=True),
+            nn.Flatten(),
+            nn.Linear(in_features=512 * self.feat_h//16 * self.feat_w//16, out_features=4096, bias=True),
             nn.ReLU(inplace=True),
 
-            nn.Linear(in_features=256, out_features=128, bias=True),
+            nn.Linear(in_features=4096, out_features=2048, bias=True),
             nn.ReLU(inplace=True),
 
-            nn.Linear(in_features=128, out_features=(self.grid_w+1)*(self.grid_h+1)*2, bias=True)
+            nn.Linear(in_features=2048, out_features=(self.grid_w+1)*(self.grid_h+1)*2, bias=True)
         )
         self._initialize_weights()
         
@@ -53,12 +56,11 @@ class MeshRegressNet(nn.Module):
 
     def forward(self, x):
         x = self.stage1(x)
-        x = x.view(x.size(0), -1)
         x = self.stage2(x)
         return x.reshape(-1, self.grid_h + 1, self.grid_w + 1, 2)    # [N, H, W, 2]
 
 if __name__ == '__main__':
-    model = MeshRegressNet([12, 12])
+    model = MeshRegressNet([12, 12],[64, 64])
     feature = torch.rand(1, 2, 64, 64)
     ouput = model(feature)
     print(ouput.shape)

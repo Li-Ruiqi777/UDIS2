@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.models as models
 
 class SqueezeExcite(nn.Module):
     """轻量级通道注意力模块"""
@@ -115,8 +116,35 @@ class FeatureExtractor(nn.Module):
         
         return features
 
+class FeatureExtractor_resnet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        resnet50_model = models.resnet.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+        self.feature_extractor_stage1 = nn.Sequential(
+            resnet50_model.conv1,
+            resnet50_model.bn1,
+            resnet50_model.relu,
+            resnet50_model.maxpool,
+            resnet50_model.layer1,
+            resnet50_model.layer2,
+        )
+
+        self.feature_extractor_stage2 = nn.Sequential(
+            resnet50_model.layer3,
+        )
+
+    def forward(self, x):
+        features = []
+        x = self.feature_extractor_stage1(x)
+        features.append(x)
+        x = self.feature_extractor_stage2(x)
+        features.append(x)
+        
+        return features
+
 if __name__ == '__main__':
     model = FeatureExtractor([1/8, 1/16])
+    model = FeatureExtractor_resnet()
     input = torch.randn(1, 3, 512, 512)
     features = model(input)  # 得到4个尺度的特征图
 

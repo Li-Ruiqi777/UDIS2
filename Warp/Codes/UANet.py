@@ -15,19 +15,20 @@ device = utils.constant.device
 class UANet(nn.Module):
     def __init__(self):
         super(UANet, self).__init__()
-        self.feature_extractor = FeatureExtractor([1/8, 1/16])
+        # self.feature_extractor = FeatureExtractor([1/8, 1/16])
+        self.feature_extractor = FeatureExtractor_resnet()
         self.homo_regress_net = HomoRegressNet()
-        self.mesh_regress_net = MeshRegressNet([gird_w, gird_h])
+        self.mesh_regress_net = MeshRegressNet([gird_h, gird_w],[64, 64])
 
     def forward(self, ref_tensor, target_tensor):
         batch_size, _, img_h, img_w = ref_tensor.size()
 
-        ref_feat_list = self.feature_extractor(ref_tensor)
+        ref_feat_list = self.feature_extractor(ref_tensor) #[[N,C,64,64], [N,C,32,32]]
         target_feat_list = self.feature_extractor(target_tensor)
 
         # regress stage 1
         correlation_1 = CCL(ref_feat_list[-1], target_feat_list[-1])
-        H_motion = self.homo_regress_net(correlation_1)
+        H_motion = self.homo_regress_net(correlation_1) # [N, 4, 2]
 
         src_p = torch.FloatTensor([[0.0, 0.0], [img_w, 0.0], [0.0, img_h], [img_w, img_h]]).to(device)
         src_p = src_p.unsqueeze(0).expand(batch_size, -1, -1)

@@ -2,6 +2,7 @@ import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from torchsummary import summary
 from thop import profile
 import os
 import argparse
@@ -29,7 +30,7 @@ def train(args):
                                   pin_memory=True)
 
     # 定义网络模型
-    model = UDIS2().to(device)
+    model = UANet().to(device)
     model.train()
 
     # 定义优化器和学习率
@@ -71,6 +72,7 @@ def train(args):
                 macs, params = profile(model, inputs=[inpu1_tesnor, inpu2_tesnor])
                 logger.info("Number of Params: %.2f M" % (params / 1e6))
                 logger.info("Number of MACs: %.2f G" % (macs / 1e9))
+                summary(model, [(3, 512, 512),(3, 512, 512)])
 
             optimizer.zero_grad()
 

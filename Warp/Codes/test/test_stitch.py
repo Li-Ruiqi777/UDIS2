@@ -5,7 +5,8 @@ import os
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from network import *
+from UDIS2 import UDIS2
+from utils.get_output import get_batch_outputs_for_stitch
 from utils.ImageSaver import ImageSaver
 
 ckpt_path = "E:/DeepLearning/7_Stitch/UDIS2/Warp/model/epoch100_model.pth"

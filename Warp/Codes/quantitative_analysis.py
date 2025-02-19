@@ -8,8 +8,9 @@ import os
 import numpy as np
 import skimage
 
-from network import get_batch_outputs_for_train, UDIS2
+from UDIS2 import UDIS2
 from dataset import *
+from utils.get_output import get_batch_outputs_for_train
 from utils.logger_config import *
 from utils import constant
 

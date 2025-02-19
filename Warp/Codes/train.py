@@ -8,7 +8,8 @@ import os
 import argparse
 
 from loss import get_overlap_loss, get_inter_grid_loss, get_intra_grid_loss
-from network import get_batch_outputs_for_train, UDIS2
+from UDIS2 import UDIS2
+from utils.get_output import get_batch_outputs_for_train
 from dataset import TrainDataset
 from utils.logger_config import *
 from utils import constant

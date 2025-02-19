@@ -13,7 +13,8 @@ import torch.optim as optim
 
 import cv2
 
-from network import get_stitched_result, UDIS2, get_batch_outputs_for_ft
+from UDIS2 import UDIS2
+from utils.get_output import get_stitched_result, get_batch_outputs_for_ft
 
 import glob
 from loss import get_overlap_loss_ft

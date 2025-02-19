@@ -5,8 +5,9 @@ import torch
 from torch.utils.data import DataLoader
 import argparse
 
-from network import get_batch_outputs_for_stitch, UDIS2
+from UDIS2 import UDIS2
 from utils.ImageSaver import ImageSaver
+from utils.get_output import get_batch_outputs_for_stitch
 from dataset import *
 from utils.logger_config import *
 from utils import constant

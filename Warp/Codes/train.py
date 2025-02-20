@@ -69,12 +69,6 @@ def train(args):
             inpu1_tesnor = batch_value[0].float().to(device)
             inpu2_tesnor = batch_value[1].float().to(device)
             
-            if(epoch == 0 and idx == 0):
-                macs, params = profile(model, inputs=[inpu1_tesnor, inpu2_tesnor])
-                logger.info("Number of Params: %.2f M" % (params / 1e6))
-                logger.info("Number of MACs: %.2f G" % (macs / 1e9))
-                summary(model, [(3, 512, 512),(3, 512, 512)])
-
             optimizer.zero_grad()
 
             batch_outputs = get_batch_outputs_for_train(model, inpu1_tesnor, inpu2_tesnor)

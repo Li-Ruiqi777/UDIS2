@@ -6,9 +6,10 @@ from torch.utils.data import DataLoader
 import argparse
 
 from UDIS2 import UDIS2
+from UANet import UANet
+from dataset import *
 from utils.ImageSaver import ImageSaver
 from utils.get_output import get_batch_outputs_for_stitch
-from dataset import *
 from utils.logger_config import *
 from utils import constant
 
@@ -30,13 +31,13 @@ def test_stitch(args):
         pin_memory=True,
     )
 
-    model = UDIS2().to(device)
+    model = UANet().to(device)
     model.eval()
 
     # 加载权重
     check_point = torch.load(args.ckpt_path)
     logger.info(f"load model from {args.ckpt_path}!")
-    model.load_state_dict(check_point["model"])
+    model.load_state_dict(check_point["model"], strict=True)
 
     image_saver = ImageSaver(args.save_path)
 
@@ -87,7 +88,7 @@ if __name__ == "__main__":
     parser.add_argument("--gpu", type=str, default="0")
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument('--ckpt_path', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/model/epoch100_model.pth')
+    parser.add_argument('--ckpt_path', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/model/UANet/epoch040_model.pth')
     parser.add_argument('--save_path', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/results/stitch')
     parser.add_argument("--test_dataset_path",type=str, default="E:/DeepLearning/0_DataSets/007-UDIS-D-subset/test")
     args = parser.parse_args()

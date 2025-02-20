@@ -2,44 +2,34 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class ChannelAttention(nn.Module):
-    """轻量级通道注意力"""
-    def __init__(self, in_planes, reduction=8):
-        super().__init__()
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.max_pool = nn.AdaptiveMaxPool2d(1)
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1):
+        super(ResidualBlock, self).__init__()
         
-        self.fc = nn.Sequential(
-            nn.Linear(in_planes, in_planes // reduction),
-            nn.ReLU(inplace=True),
-            nn.Linear(in_planes // reduction, in_planes),
-            nn.Sigmoid()
-        )
+        # 第一层卷积，步长为stride，保持通道数一致或者改变
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(out_channels)
         
-    def forward(self, x):
-        b, c, _, _ = x.size()
-        avg_out = self.fc(self.avg_pool(x).view(b, c))
-        max_out = self.fc(self.max_pool(x).view(b, c))
-        out = avg_out + max_out
-        return x * out.view(b, c, 1, 1)
+        # 第二层卷积
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        
+        # 用于匹配输入和输出的维度
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_channels != out_channels:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(out_channels)
+            )
 
-class ResBlock(nn.Module):
-    """带注意力的残差块"""
-    def __init__(self, in_channels):
-        super().__init__()
-        self.conv1 = nn.Conv2d(in_channels, in_channels, 3, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(in_channels)
-        self.ca = ChannelAttention(in_channels)
-        self.conv2 = nn.Conv2d(in_channels, in_channels, 3, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(in_channels)
-        
     def forward(self, x):
-        residual = x
         out = F.relu(self.bn1(self.conv1(x)))
-        out = self.ca(out)
         out = self.bn2(self.conv2(out))
-        out += residual
-        return F.relu(out)
+
+        out += self.shortcut(x)
+        out = F.relu(out)
+        return out
+
 
 class HomoRegressNet(nn.Module):
     def __init__(self, input_feat_size=[32, 32]):
@@ -49,44 +39,43 @@ class HomoRegressNet(nn.Module):
 
         # 下采样1/8
         self.stage1 = nn.Sequential(
-            nn.Conv2d(2, 64, kernel_size=3, padding=1, bias=False),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
-            nn.ReLU(inplace=True),
+            ResidualBlock(2, 64, stride=1),
+            ResidualBlock(64, 64, stride=1),
             nn.MaxPool2d(2, 2),
 
-            nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=False),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(128, 128, kernel_size=3, padding=1, bias=False),
-            nn.ReLU(inplace=True),
+            ResidualBlock(64, 256, stride=1),
+            ResidualBlock(256, 256, stride=1),
             nn.MaxPool2d(2, 2),
 
-            nn.Conv2d(128, 256, kernel_size=3, padding=1, bias=False),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, kernel_size=3, padding=1, bias=False),
-            nn.ReLU(inplace=True),
+            ResidualBlock(256, 512, stride=1),
+            ResidualBlock(512, 512, stride=1),
             nn.MaxPool2d(2, 2)
         )
         
         self.stage2 = nn.Sequential(
+            nn.AdaptiveMaxPool2d((1, 1)),
             nn.Flatten(),
-            nn.Linear(in_features=256 * self.feat_h//8 * self.feat_w//8, out_features=4096, bias=True),
+            nn.Linear(in_features=512, out_features=2048, bias=True),
             nn.ReLU(inplace=True),
 
-            nn.Linear(in_features=4096, out_features=1024, bias=True),
+            nn.Linear(in_features=2048, out_features=1024, bias=True),
             nn.ReLU(inplace=True),
 
             nn.Linear(in_features=1024, out_features=8, bias=True)
         )
         
-        # 初始化权重
+        self._initialize_weights()
+        
+    def _initialize_weights(self):
         for m in self.modules():
-            if isinstance(m, nn.Conv2d):
+            if isinstance(m, (nn.Conv2d, nn.Linear)):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                        nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
-                
+
     def forward(self, x):
         # x shape: [N, 2, H, W]
         x = self.stage1(x) # [N, 256, H/4, W/4]

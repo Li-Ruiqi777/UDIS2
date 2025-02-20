@@ -14,9 +14,9 @@ def CCL(feature_1, feature_2):
 
     norm_feature_1 = F.normalize(feature_1, p=2, dim=1)
     norm_feature_2 = F.normalize(feature_2, p=2, dim=1)
-    # print(norm_feature_2.size())
 
-    patches = extract_patches(norm_feature_2)
+    # stage1 : 计算Correlation Volume
+    patches = extract_patches(norm_feature_2) # [N ,C, H, W, K, K]
     if torch.cuda.is_available():
         patches = patches.cuda()
 
@@ -32,18 +32,20 @@ def CCL(feature_1, feature_2):
 
     match_vol = []
     for i in range(bs):
-        single_match = F.conv2d(
-            norm_feature_1[i].unsqueeze(0), matching_filters[i], padding=1
-        )
+        single_match = F.conv2d(norm_feature_1[i].unsqueeze(0), matching_filters[i], padding=1)
         match_vol.append(single_match)
 
-    match_vol = torch.cat(match_vol, 0)
-    # print(match_vol .size())
+    # correlation volume: 代表ref上每个path与target上每个patch的匹配程度
+    # 其中的每个像素可以看成一个长度为[H*W]的向量，代表ref上此位置的patch与target上各个patch的匹配程度
+    match_vol = torch.cat(match_vol, 0) # [N, H*W, H, W]
 
-    # scale softmax
-    softmax_scale = 10
+    # stage2 : scale softmax
+    softmax_scale = 10 # 论文里的scale factor,作用是抑制小的匹配值,增强大的匹配值
+
+    # 使用softmax将patch间的匹配程度归一化到[0,1], 从而将匹配看成一个分类问题
     match_vol = F.softmax(match_vol * softmax_scale, 1)
 
+    # stage3 : 计算Feature Flow:一个[N,2,H,W]的Tensor, 代表了ref上每个path移动到target上匹配的patch的位移
     channel = match_vol.size()[1]
 
     h_one = torch.linspace(0, h - 1, h)
@@ -72,8 +74,8 @@ def CCL(feature_1, feature_2):
     flow_w = match_vol * (c_one % w - w_one)
     flow_w = torch.sum(flow_w, dim=1, keepdim=True)
 
+    # [N, 2, H, W]
     feature_flow = torch.cat([flow_w, flow_h], 1)
-    # print(flow.size())
 
     return feature_flow
 

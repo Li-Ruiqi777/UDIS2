@@ -2,8 +2,6 @@ import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from torchsummary import summary
-from thop import profile
 import os
 import argparse
 
@@ -86,14 +84,15 @@ def train(args):
             total_loss.backward()
 
             # 裁剪梯度
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=3, norm_type=2)
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=3, norm_type=2)
+            torch.nn.utils.clip_grad_value_(model.parameters(), clip_value=1)
             optimizer.step()
 
             average_overlap_loss += overlap_loss.item()
             average_nonoverlap_loss += nonoverlap_loss.item()
             average_total_loss += total_loss.item()
 
-            if current_iter % args.print_log_interval == 0:
+            if current_iter % args.print_log_interval == 0 and current_iter != 0:
                 average_loss = average_total_loss / args.print_log_interval
                 average_overlap_loss = average_overlap_loss / args.print_log_interval
                 average_nonoverlap_loss = average_nonoverlap_loss / args.print_log_interval

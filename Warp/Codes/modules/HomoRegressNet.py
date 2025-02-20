@@ -21,7 +21,7 @@ class HomoRegressNet(nn.Module):
         )
         
         self.stage2 = nn.Sequential(
-            nn.AdaptiveMaxPool2d((4, 4)),
+            nn.AdaptiveAvgPool2d((4, 4)),
             nn.Flatten(),
             # nn.Linear(in_features=256 * self.feat_h//8 * self.feat_w//8, out_features=2048, bias=True),
             nn.Linear(in_features=256 * 4 * 4, out_features=2048, bias=True),
@@ -37,10 +37,14 @@ class HomoRegressNet(nn.Module):
 
     def _initialize_weights(self):
         for m in self.modules():
-            if isinstance(m, (nn.Conv2d, nn.Linear)):
+            if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
                 if m.bias is not None:
-                        nn.init.constant_(m.bias, 0)
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)

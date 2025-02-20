@@ -70,3 +70,15 @@ def _forward_impl(self, x: Tensor) -> Tensor:
 感觉见鬼了，现在加了残差块和全局池化到1x1也不会出现NAN了...先看看多训练会儿Loss能不能降得比较低——训了1h，Loss还是0.8几，通用iter数别的模型的Loss基本都0.4几了
 
 - [ ] 试一下残差块 + 卷积下采样，不用全局池化，Loss下降的会不会快一些，因为2个论文都没用最大池化
+
+
+
+4.换成yolo的backbone后，卷积的超参数怎么调？
+
+- 直接和yaml中的一致，相对于yolo11-x，太占显存了，所以调小了些
+
+[一文弄懂 YOLOv8网络结构解读 、yolov8.yaml配置文件详细解读与说明、模型训练参数详细解析 通俗易懂！入门必看系列！_yolov8细节信息-CSDN博客](https://blog.csdn.net/m0_74823452/article/details/145491780)
+
+
+
+5.SPPF（空间金字塔池化）有啥用？

@@ -2,34 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class ResidualBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, stride=1):
-        super(ResidualBlock, self).__init__()
-        
-        # 第一层卷积，步长为stride，保持通道数一致或者改变
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(out_channels)
-        
-        # 第二层卷积
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(out_channels)
-        
-        # 用于匹配输入和输出的维度
-        self.shortcut = nn.Sequential()
-        if stride != 1 or in_channels != out_channels:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(out_channels)
-            )
-
-    def forward(self, x):
-        out = F.relu(self.bn1(self.conv1(x)))
-        out = self.bn2(self.conv2(out))
-
-        out += self.shortcut(x)
-        out = F.relu(out)
-        return out
-
+from modules.ResidualBlock import ResidualBlock
 
 class HomoRegressNet(nn.Module):
     def __init__(self, input_feat_size=[32, 32]):
@@ -39,23 +12,19 @@ class HomoRegressNet(nn.Module):
 
         # 下采样1/8
         self.stage1 = nn.Sequential(
-            ResidualBlock(2, 64, stride=1),
+            ResidualBlock(2, 64, stride=2),  # 下采样1/2
             ResidualBlock(64, 64, stride=1),
-            nn.MaxPool2d(2, 2),
-
-            ResidualBlock(64, 256, stride=1),
+            ResidualBlock(64, 128, stride=2),  # 下采样1/4
+            ResidualBlock(128, 128, stride=1),
+            ResidualBlock(128, 256, stride=2),  # 下采样1/8
             ResidualBlock(256, 256, stride=1),
-            nn.MaxPool2d(2, 2),
-
-            ResidualBlock(256, 512, stride=1),
-            ResidualBlock(512, 512, stride=1),
-            nn.MaxPool2d(2, 2)
         )
         
         self.stage2 = nn.Sequential(
-            nn.AdaptiveMaxPool2d((1, 1)),
+            nn.AdaptiveMaxPool2d((4, 4)),
             nn.Flatten(),
-            nn.Linear(in_features=512, out_features=2048, bias=True),
+            # nn.Linear(in_features=256 * self.feat_h//8 * self.feat_w//8, out_features=2048, bias=True),
+            nn.Linear(in_features=256 * 4 * 4, out_features=2048, bias=True),
             nn.ReLU(inplace=True),
 
             nn.Linear(in_features=2048, out_features=1024, bias=True),
@@ -65,7 +34,7 @@ class HomoRegressNet(nn.Module):
         )
         
         self._initialize_weights()
-        
+
     def _initialize_weights(self):
         for m in self.modules():
             if isinstance(m, (nn.Conv2d, nn.Linear)):

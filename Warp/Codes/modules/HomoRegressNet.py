@@ -18,10 +18,13 @@ class HomoRegressNet(nn.Module):
         self.stage1 = nn.Sequential(
             ResidualBlock(2, 64, stride=2),  # 下采样1/2
             ResidualBlock(64, 64, stride=1),
+            ECA(),
             ResidualBlock(64, 128, stride=2),  # 下采样1/4
             ResidualBlock(128, 128, stride=1),
+            ECA(),
             ResidualBlock(128, 256, stride=2),  # 下采样1/8
             ResidualBlock(256, 256, stride=1),
+            ECA(),
         )
         
         self.stage2 = nn.Sequential(

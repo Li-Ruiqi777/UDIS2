@@ -9,6 +9,7 @@ import numpy as np
 import skimage
 
 from UDIS2 import UDIS2
+from UANet import UANet
 from dataset import *
 from utils.get_output import get_batch_outputs_for_train
 from utils.logger_config import *
@@ -32,7 +33,7 @@ def quantitative_analysis(args):
         drop_last=False,
     )
 
-    model = UDIS2().to(device)
+    model = UANet().to(device)
     model.eval()
 
     # 加载权重
@@ -114,7 +115,7 @@ if __name__ == "__main__":
     parser.add_argument("--gpu", type=str, default="0")
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--test_dataset_path", type=str, default="E:/DeepLearning/0_DataSets/007-UDIS-D-subset/test/",)
-    parser.add_argument('--ckpt_path', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/model/eca/epoch140_model.pth')
+    parser.add_argument('--ckpt_path', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/model/UANet-FPN/epoch210_model.pth')
     args = parser.parse_args()
     
     quantitative_analysis(args)

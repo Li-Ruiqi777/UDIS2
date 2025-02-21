@@ -4,6 +4,8 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import os
 import argparse
+import numpy as np
+import random
 
 from loss import get_overlap_loss, get_inter_grid_loss, get_intra_grid_loss
 from UDIS2 import UDIS2
@@ -33,7 +35,9 @@ def train(args):
     model.train()
 
     # 定义优化器和学习率
-    optimizer = optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.999), eps=1e-08)
+    target_lr = 1e-4
+    initial_lr = 5e-5
+    optimizer = optim.AdamW(model.parameters(), lr=target_lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.97)
 
     # 加载已有模型权重
@@ -62,6 +66,11 @@ def train(args):
 
     # 开始训练
     for epoch in range(start_epoch, args.max_epoch):
+        if epoch < args.warmup_epoch:
+            lr = initial_lr + (target_lr - initial_lr) * (epoch / args.max_epoch)
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = lr
+
         for idx, batch_value in enumerate(train_dataloader):
 
             inpu1_tesnor = batch_value[0].float().to(device)
@@ -135,8 +144,15 @@ def train(args):
             }
             torch.save(state, model_save_path)
 
+def setup_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.cuda.manual_seed(seed)
 
 if __name__=="__main__":
+    setup_seed(200147)
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--gpu', type=str, default='0')
@@ -147,6 +163,7 @@ if __name__=="__main__":
     parser.add_argument('--print_log_interval', type=int, default=20)
     parser.add_argument('--tensorboard_log_interval', type=int, default=100)
     parser.add_argument('--resume', type=bool, default=False)
+    parser.add_argument('--warmup_epoch', type=int, default=10)
     parser.add_argument('--train_dataset_path', type=str, default='E:/DeepLearning/0_DataSets/007-UDIS-D-subset/train')
     parser.add_argument('--ckpt_path', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/model/epoch100_model.pth')
     parser.add_argument('--model_save_folder', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/model')

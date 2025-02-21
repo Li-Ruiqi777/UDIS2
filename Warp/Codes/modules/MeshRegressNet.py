@@ -1,11 +1,15 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
 
-from modules.ResidualBlock import ResidualBlock
+from ResidualBlock import ResidualBlock
+from block import *
     
 class MeshRegressNet(nn.Module):
-    def __init__(self, grid_size, input_feat_size=[64, 64], input_dim=2):
+    def __init__(self, grid_size, input_feat_size=[64, 64], spp_pool_size=[1, 2, 4], input_dim=2):
         super().__init__()
         self.grid_h, self.grid_w = grid_size
         self.feat_h  = input_feat_size[0]
@@ -23,10 +27,8 @@ class MeshRegressNet(nn.Module):
         )
 
         self.stage2 = nn.Sequential(
-            nn.AdaptiveMaxPool2d((4, 4)),
-            nn.Flatten(),
-            # nn.Linear(in_features=512 * self.feat_h//16 * self.feat_w//16, out_features=4096, bias=True),
-            nn.Linear(in_features=512 * 4 * 4, out_features=4096, bias=True),
+            SPP(spp_pool_size),
+            nn.Linear(in_features=512 * sum([p*p for p in spp_pool_size]), out_features=4096, bias=True),
             nn.ReLU(inplace=True),
 
             nn.Linear(in_features=4096, out_features=2048, bias=True),

@@ -114,7 +114,7 @@ if __name__ == "__main__":
     parser.add_argument("--gpu", type=str, default="0")
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--test_dataset_path", type=str, default="E:/DeepLearning/0_DataSets/007-UDIS-D-subset/test/",)
-    parser.add_argument('--ckpt_path', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/model/without_pretrain/epoch110_model.pth')
+    parser.add_argument('--ckpt_path', type=str, default='E:/DeepLearning/7_Stitch/UDIS2/Warp/model/eca/epoch140_model.pth')
     args = parser.parse_args()
     
     quantitative_analysis(args)

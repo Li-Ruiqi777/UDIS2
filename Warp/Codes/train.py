@@ -84,8 +84,8 @@ def train(args):
             total_loss.backward()
 
             # 裁剪梯度
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=3, norm_type=2)
-            torch.nn.utils.clip_grad_value_(model.parameters(), clip_value=1)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=3, norm_type=2)
+            # torch.nn.utils.clip_grad_value_(model.parameters(), clip_value=1)
             optimizer.step()
 
             average_overlap_loss += overlap_loss.item()

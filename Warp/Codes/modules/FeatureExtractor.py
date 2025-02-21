@@ -7,22 +7,57 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
 
 from Conv import Conv
-from block import C3k2
+from block import C3k2, SPPF, C2PSA
+
+class FPN(nn.Module):
+    def __init__(self, width=0.25, depth=0.5):
+        super().__init__()       
+        self.upsample = nn.Upsample(scale_factor=2, mode='nearest')
+
+        # 输入1/16
+        self.fusion2 = C3k2(int((1024 + 512) * width), int(1024 * width), int(2 * depth), False)
+
+        # 输入1/8
+        self.fusion1 = C3k2(int((1024 + 512) * width), int(512 * width), int(2 * depth), False)
+    
+    def forward(self, x1, x2, x3):
+        # 1/16
+        p2 = torch.cat([x2, self.upsample(x3)], dim=1)
+        p2 = self.fusion2(p2)
+
+        # 1/8
+        p1 = torch.cat([x1, self.upsample(p2)], dim=1)
+        p1 = self.fusion1(p1)
+        
+        return [p1, p2]
 
 class FeatureExtractor(nn.Module):
     def __init__(self):
         super().__init__()
+        width = 0.25
+        depth = 0.5
+
         self.stage1 = nn.Sequential(
-            Conv(3, 64, k=3, s=2), # 1/2
-            Conv(64, 128, k=3, s=2), # 1/4
-            C3k2(128, 256, 1, False, 0.25),
-            Conv(256, 256, k=3, s=2), # 1/8
-            C3k2(256, 512, 1, False, 0.25),
+            Conv(3, int(64 * width), k=3, s=2), # 1/2
+            Conv(int(64 * width), int(128 * width), k=3, s=2), # 1/4
+            C3k2(int(128 * width), int(256 * width), int(2 * depth), False, 0.25),
+            Conv(int(256 * width), int(256 * width), k=3, s=2), # 1/8
+            C3k2(int(256 * width), int(512 * width), int(2 * depth), False, 0.25),
         )
+
         self.stage2 = nn.Sequential(
-            Conv(512, 512, k=3, s=2), # 1/16
-            C3k2(512, 512, 1, False, 0.25),
+            Conv(int(512 * width), int(512 * width), k=3, s=2), # 1/16
+            C3k2(int(512 * width), int(512 * width), int(2 * depth), True),
         )
+
+        self.stage3 = nn.Sequential(
+            Conv(int(512 * width), int(1024 * width), k=3, s=2), # 1/32
+            C3k2(int(1024 * width), int(1024 * width), int(2 * depth), True),
+            SPPF(int(1024 * width), int(1024 * width), 5),
+            C2PSA(int(1024 * width), int(1024 * width), int(2 * depth), 0.25)
+        )
+
+        self.fpn = FPN(width, depth)
 
         self._initialize_weights()
 
@@ -41,13 +76,11 @@ class FeatureExtractor(nn.Module):
                 nn.init.constant_(m.bias, 0)
         
     def forward(self, x):
-        features = []
-        x = self.stage1(x)
-        features.append(x)
-        x = self.stage2(x)
-        features.append(x)
+        x1 = self.stage1(x)
+        x2 = self.stage2(x1)
+        x3 = self.stage3(x2)
 
-        return features
+        return self.fpn(x1, x2, x3)
 
 class FeatureExtractor_resnet(nn.Module):
     def __init__(self):

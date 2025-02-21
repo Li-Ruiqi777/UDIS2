@@ -82,3 +82,13 @@ def _forward_impl(self, x: Tensor) -> Tensor:
 
 
 5.SPPF（空间金字塔池化）有啥用？
+
+用于卷积和全连接层之间的连接，直接用全局池化损失的信息太多了，利用池化金字塔可以获得不同尺度的信息，减小信息丢失。
+
+加了之后确实效果比之前直接用全局最大池化好一些
+
+[空间金字塔池化改进 SPP / SPPF / SimSPPF / ASPP / RFB / SPPCSPC / SPPFCSPC-CSDN博客](https://blog.csdn.net/weixin_43694096/article/details/126354660)
+
+
+
+19.10开始的

@@ -96,12 +96,10 @@ class UDIS2(nn.Module):
             resnet50_model.maxpool,
             resnet50_model.layer1,
             resnet50_model.layer2,
-            ECA(),
         )
 
         self.feature_extractor_stage2 = nn.Sequential(
             resnet50_model.layer3,
-            ECA(),
         )
     
     def initailize_weights(self):

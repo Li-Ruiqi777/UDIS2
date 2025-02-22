@@ -130,7 +130,8 @@ def train(args):
 
             current_iter += 1
 
-        scheduler.step()
+        if epoch >= args.warmup_epoch:
+            scheduler.step()
 
         # 保存模型
         if ((epoch + 1) % args.save_epoch_interval == 0 or (epoch + 1) == args.max_epoch):

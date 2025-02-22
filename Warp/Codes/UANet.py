@@ -17,6 +17,8 @@ class UANet(nn.Module):
         self.feature_extractor = FeatureExtractor_resnet()
         self.homo_regress_net = HomoRegressNet()
         self.mesh_regress_net = MeshRegressNet([gird_h, gird_w],[64, 64])
+        self.CCL1 = CCL_ChannelAttention(1024)
+        self.CCL2 = CCL_ChannelAttention(512)
 
     def forward(self, ref_tensor, target_tensor):
         batch_size, _, img_h, img_w = ref_tensor.size()
@@ -25,7 +27,7 @@ class UANet(nn.Module):
         target_feat_list = self.feature_extractor(target_tensor)
 
         # regress stage 1
-        correlation_1 = CCL(ref_feat_list[-1], target_feat_list[-1])
+        correlation_1 = self.CCL1(ref_feat_list[-1], target_feat_list[-1])
         H_motion = self.homo_regress_net(correlation_1) # [N, 4, 2]
 
         src_p = torch.FloatTensor([[0.0, 0.0], [img_w, 0.0], [0.0, img_h], [img_w, img_h]]).to(device)
@@ -51,7 +53,7 @@ class UANet(nn.Module):
         H_mat = torch.matmul(torch.matmul(M_tile_inv, H), M_tile)
         warp_target_feat_64 = torch_homo_transform.transformer(target_feat_list[-2], H_mat, (int(img_h / 8), int(img_w / 8)))
 
-        correlation_2 = CCL(ref_feat_list[-2], warp_target_feat_64)
+        correlation_2 = self.CCL2(ref_feat_list[-2], warp_target_feat_64)
         Mesh_motion = self.mesh_regress_net(correlation_2)
 
         return [H_motion, Mesh_motion]

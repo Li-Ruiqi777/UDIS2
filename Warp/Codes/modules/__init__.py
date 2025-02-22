@@ -4,3 +4,4 @@ from .HomoRegressNet import HomoRegressNet
 from .MeshRegressNet import MeshRegressNet
 from .Conv import *
 from .block import *
+from .Attention import *

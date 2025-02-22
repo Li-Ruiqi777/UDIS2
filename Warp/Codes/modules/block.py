@@ -1,33 +1,39 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import os
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
 from Conv import Conv
+from Attention import *
 
-class ECA(nn.Module):
-    def __init__(self, k_size=3):
-        super(ECA, self).__init__()
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.conv = nn.Conv1d(1, 1, kernel_size=k_size, padding=(k_size - 1) // 2, bias=False) 
-        self.sigmoid = nn.Sigmoid()
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1):
+        super(ResidualBlock, self).__init__()
+        
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        
+        # Shortcut for matching dimensions if needed
+        if stride != 1 or in_channels != out_channels:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(out_channels)
+            )
+        else:
+            self.shortcut = nn.Identity()  # When dimensions match, identity shortcut
 
     def forward(self, x):
-        # x: input features with shape [b, c, h, w]
-        b, c, h, w = x.size()
+        out = F.relu(self.bn1(self.conv1(x)))  # Conv -> BN -> ReLU
+        out = self.bn2(self.conv2(out))
 
-        # feature descriptor on the global spatial information
-        y = self.avg_pool(x)
-
-        # Two different branches of ECA module
-        y = self.conv(y.squeeze(-1).transpose(-1, -2))
-        y = y.transpose(-1, -2).unsqueeze(-1)
-
-        # Multi-scale information fusion
-        y = self.sigmoid(y)
-
-        return x * y.expand_as(x)
-    
+        out += self.shortcut(x)  # Skip connection
+        out = F.relu(out)  # Apply ReLU after adding the shortcut
+        return out
+       
 class Bottleneck(nn.Module):
     """Standard bottleneck."""
 
@@ -269,3 +275,87 @@ class C2PSA(nn.Module):
         a, b = self.cv1(x).split((self.c, self.c), dim=1)
         b = self.m(b)
         return self.cv2(torch.cat((a, b), 1))
+    
+class CCL_ChannelAttention(nn.Module):
+    def __init__(self, in_chs):
+        super(CCL_ChannelAttention, self).__init__()
+        self.channel_atten1 = EfficientChannelAttention(in_chs)
+        self.channel_atten2 = EfficientChannelAttention(in_chs)
+    
+    def forward(self, feature_1, feature_2):
+        bs, c, h, w = feature_1.size()
+
+        norm_feature_1 = F.normalize(self.channel_atten1(feature_1), p=2, dim=1)
+        norm_feature_2 = F.normalize(self.channel_atten2(feature_2), p=2, dim=1)
+
+        # stage1 : 计算Correlation Volume
+        patches = self.extract_patches(norm_feature_2) # [N ,C, H, W, K, K]
+        if torch.cuda.is_available():
+            patches = patches.cuda()
+
+        matching_filters = patches.reshape(
+            (
+                patches.size()[0],
+                -1,
+                patches.size()[3],
+                patches.size()[4],
+                patches.size()[5],
+            )
+        )
+
+        match_vol = []
+        for i in range(bs):
+            single_match = F.conv2d(norm_feature_1[i].unsqueeze(0), matching_filters[i], padding=1)
+            match_vol.append(single_match)
+
+        # correlation volume: 代表ref上每个path与target上每个patch的匹配程度
+        # 其中的每个像素可以看成一个长度为[H*W]的向量，代表ref上此位置的patch与target上各个patch的匹配程度
+        match_vol = torch.cat(match_vol, 0) # [N, H*W, H, W]
+
+        # stage2 : scale softmax
+        softmax_scale = 10 # 论文里的scale factor,作用是抑制小的匹配值,增强大的匹配值
+
+        # 使用softmax将patch间的匹配程度归一化到[0,1], 从而将匹配看成一个分类问题
+        match_vol = F.softmax(match_vol * softmax_scale, 1)
+
+        # stage3 : 计算Feature Flow:一个[N,2,H,W]的Tensor, 代表了ref上每个path移动到target上匹配的patch的位移
+        channel = match_vol.size()[1]
+
+        h_one = torch.linspace(0, h - 1, h)
+        one1w = torch.ones(1, w)
+        if torch.cuda.is_available():
+            h_one = h_one.cuda()
+            one1w = one1w.cuda()
+        h_one = torch.matmul(h_one.unsqueeze(1), one1w)
+        h_one = h_one.unsqueeze(0).unsqueeze(0).expand(bs, channel, -1, -1)
+
+        w_one = torch.linspace(0, w - 1, w)
+        oneh1 = torch.ones(h, 1)
+        if torch.cuda.is_available():
+            w_one = w_one.cuda()
+            oneh1 = oneh1.cuda()
+        w_one = torch.matmul(oneh1, w_one.unsqueeze(0))
+        w_one = w_one.unsqueeze(0).unsqueeze(0).expand(bs, channel, -1, -1)
+
+        c_one = torch.linspace(0, channel - 1, channel)
+        if torch.cuda.is_available():
+            c_one = c_one.cuda()
+        c_one = c_one.unsqueeze(0).unsqueeze(2).unsqueeze(3).expand(bs, -1, h, w)
+
+        flow_h = match_vol * (c_one // w - h_one)
+        flow_h = torch.sum(flow_h, dim=1, keepdim=True)
+        flow_w = match_vol * (c_one % w - w_one)
+        flow_w = torch.sum(flow_w, dim=1, keepdim=True)
+
+        # [N, 2, H, W]
+        feature_flow = torch.cat([flow_w, flow_h], 1)
+
+        return feature_flow
+
+    @staticmethod
+    def extract_patches(x, kernel=3, stride=1):
+        if kernel != 1:
+            x = nn.ZeroPad2d(1)(x)
+        x = x.permute(0, 2, 3, 1)
+        all_patches = x.unfold(1, kernel, stride).unfold(2, kernel, stride)
+        return all_patches

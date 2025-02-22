@@ -4,7 +4,7 @@
 
 - [x] 重新搞个BackBone，还是先H再Mesh但不用ResNet，重新封装个类
 - [x] 把模型定义和计算结构搞成2个文件分开来
-- [ ] 看论文了解注意力机制一般加载哪里？加几个?
+- [ ] 看论文了解注意力机制一般加在哪里？加几个?
 
 
 
@@ -90,3 +90,23 @@ def _forward_impl(self, x: Tensor) -> Tensor:
 [空间金字塔池化改进 SPP / SPPF / SimSPPF / ASPP / RFB / SPPCSPC / SPPFCSPC-CSDN博客](https://blog.csdn.net/weixin_43694096/article/details/126354660)
 
 
+
+6.回归网络里加不加BN层？
+
+对于Low-Level的视觉任务最好别加，因为BN层会改变数据的分布，而回归网络需要预测准确的偏移，可能会受影响
+
+> 各种Norm的区别？
+
+
+
+7.怎么理解self-attention
+
+首先这个模块虽然是NLP领域提出的，但是它的输出还是普通的Tensor，所以CV任务也能直接用。加入输入包含5个token，self-attention就是拿各个token分别与其他token计算一个相似度分数，然后就得到了输入中的各个token的重要程度（一个权重），这就是自注意力机制。
+
+由于self-attention计算出的结果与位置无关，为了能使结果包含位置信息，通常会对输入加个位置编码
+
+
+
+8.MultiHead Self-Attention和Single Head Self-Attention的区别
+
+MultiHead中，一个Token会生成多组qkv，而Single Head Self-Attention中只生成一组

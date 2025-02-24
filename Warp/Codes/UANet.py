@@ -16,9 +16,9 @@ class UANet(nn.Module):
         super(UANet, self).__init__()
         self.feature_extractor = FeatureExtractor_resnet()
         self.homo_regress_net = HomoRegressNet()
-        self.mesh_regress_net = MeshRegressNet([gird_h, gird_w],[64, 64])
-        self.CCL1 = CCL_ChannelAttention(1024)
-        self.CCL2 = CCL_ChannelAttention(512)
+        self.mesh_regress_net = MeshRegressNet([gird_h, gird_w])
+        self.CCL1 = AttentionCostVolume(4, 32)
+        self.CCL2 = AttentionCostVolume(2, 32)
 
     def forward(self, ref_tensor, target_tensor):
         batch_size, _, img_h, img_w = ref_tensor.size()

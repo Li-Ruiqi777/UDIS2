@@ -8,14 +8,13 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
 from block import *
     
 class MeshRegressNet(nn.Module):
-    def __init__(self, grid_size, input_feat_size=[64, 64], spp_pool_size=[1, 2, 4], input_dim=2):
+    def __init__(self, grid_size):
         super().__init__()
         self.grid_h, self.grid_w = grid_size
-        self.feat_h  = input_feat_size[0]
-        self.feat_w  = input_feat_size[1]
+
         # 下采样1/16
         self.stage1 = nn.Sequential(
-            nn.Conv2d(2, 64, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1, bias=False),
             nn.ReLU(inplace=True),
             nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
             nn.ReLU(inplace=True),
@@ -72,8 +71,30 @@ class MeshRegressNet(nn.Module):
         x = self.stage2(x)  # [N, (H+1)*(W+1)*2]
         return x.reshape(-1, self.grid_h + 1, self.grid_w + 1, 2)    # [N, H, W, 2]
 
+class MeshRegressNet_SPDConv(MeshRegressNet):
+    def __init__(self, grid_size):
+        super().__init__(grid_size)
+        self.stage1 = nn.Sequential(
+            nn.Conv2d(2, 64, kernel_size=3, padding=1, bias=False),
+            nn.ReLU(inplace=True),
+            SPDConv(64, 64), # 1/2
+
+            nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=False),
+            nn.ReLU(inplace=True),
+            SPDConv(128, 128), # 1/4
+
+            nn.Conv2d(128, 256, kernel_size=3, padding=1, bias=False),
+            nn.ReLU(inplace=True),
+            SPDConv(256, 256), # 1/8
+
+            nn.Conv2d(256, 512, kernel_size=3, padding=1, bias=False),
+            nn.ReLU(inplace=True),
+            SPDConv(512, 512), # 1/16
+        )
+        super()._initialize_weights()
+
 if __name__ == '__main__':
-    model = MeshRegressNet([12, 12],[64, 64])
+    model = MeshRegressNet_SPDConv([12, 12])
     feature = torch.rand(1, 2, 64, 64)
     ouput = model(feature)
     print(ouput.shape)

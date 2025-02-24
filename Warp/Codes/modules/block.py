@@ -7,6 +7,18 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
 from Conv import Conv
 from Attention import *
 
+class SPDConv(nn.Module):
+    # Changing the dimension of the Tensor
+    def __init__(self, inc, ouc, dimension=1):
+        super().__init__()
+        self.d = dimension
+        self.conv = Conv(inc * 4, ouc, k=3)
+
+    def forward(self, x):
+        x = torch.cat([x[..., ::2, ::2], x[..., 1::2, ::2], x[..., ::2, 1::2], x[..., 1::2, 1::2]], 1)
+        x = self.conv(x)
+        return x
+    
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super(ResidualBlock, self).__init__()
@@ -276,17 +288,23 @@ class C2PSA(nn.Module):
         b = self.m(b)
         return self.cv2(torch.cat((a, b), 1))
     
-class CCL_ChannelAttention(nn.Module):
-    def __init__(self, in_chs):
-        super(CCL_ChannelAttention, self).__init__()
-        self.channel_atten1 = EfficientChannelAttention(in_chs)
-        self.channel_atten2 = EfficientChannelAttention(in_chs)
+class CCL(nn.Module):
+    def __init__(self):
+        super(CCL, self).__init__()
+
+    @staticmethod
+    def extract_patches(x, kernel=3, stride=1):
+        if kernel != 1:
+            x = nn.ZeroPad2d(1)(x)
+        x = x.permute(0, 2, 3, 1)
+        all_patches = x.unfold(1, kernel, stride).unfold(2, kernel, stride)
+        return all_patches
     
     def forward(self, feature_1, feature_2):
         bs, c, h, w = feature_1.size()
 
-        norm_feature_1 = F.normalize(self.channel_atten1(feature_1), p=2, dim=1)
-        norm_feature_2 = F.normalize(self.channel_atten2(feature_2), p=2, dim=1)
+        norm_feature_1 = F.normalize(feature_1, p=2, dim=1)
+        norm_feature_2 = F.normalize(feature_2, p=2, dim=1)
 
         # stage1 : 计算Correlation Volume
         patches = self.extract_patches(norm_feature_2) # [N ,C, H, W, K, K]
@@ -351,11 +369,103 @@ class CCL_ChannelAttention(nn.Module):
         feature_flow = torch.cat([flow_w, flow_h], 1)
 
         return feature_flow
+    
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+    
+class CCL_ChannelAttention(CCL):
+    def __init__(self, in_chs):
+        super(CCL_ChannelAttention, self).__init__()
+        self.channel_atten1 = EfficientChannelAttention(in_chs)
+        self.channel_atten2 = EfficientChannelAttention(in_chs)
+        self._initialize_weights()
 
-    @staticmethod
-    def extract_patches(x, kernel=3, stride=1):
-        if kernel != 1:
-            x = nn.ZeroPad2d(1)(x)
-        x = x.permute(0, 2, 3, 1)
-        all_patches = x.unfold(1, kernel, stride).unfold(2, kernel, stride)
-        return all_patches
+    def forward(self, feature_1, feature_2):
+        feature_1 = self.channel_atten1(feature_1)
+        feature_2 = self.channel_atten2(feature_2)
+        return super().forward(feature_1, feature_2)
+    
+class CCL_LocalWindowAttention(CCL):
+    def __init__(self, in_chs):
+        super(CCL_LocalWindowAttention, self).__init__()
+        self.atten1 = LocalWindowAttention(in_chs)
+        self.atten2 = LocalWindowAttention(in_chs)
+        self._initialize_weights()
+
+    def forward(self, feature_1, feature_2):
+        feature_1 = self.atten1(feature_1)
+        feature_2 = self.atten2(feature_2)
+        return super().forward(feature_1, feature_2)
+
+def cost_volume(x1, x2, search_range, normBoth=False, fast=True):
+    """Build cost volume for associating a pixel from Image1 with its corresponding pixels in Image2.
+      Args:
+          c1: Level of the feature pyramid of Image1
+          warp: Warped level of the feature pyramid of image22
+          search_range: Search range (maximum displacement)
+      """
+    if normBoth:
+        x1 = F.normalize(x1, p=2, dim=1)
+        x2 = F.normalize(x2, p=2, dim=1)
+    else:
+        x1 = F.normalize(x1, p=2, dim=1)
+    bs, c, h, w = x1.shape
+    padded_x2 = F.pad(x2, [search_range] * 4)  # [b,c,h,w] -> [b,c,h+sr*2,w+sr*2]
+    max_offset = search_range * 2 + 1
+
+    if fast:
+        # faster(*2) but cost higher(*n) GPU memory
+        # [N, C, max_offset^2, H, W]
+        patches = F.unfold(padded_x2, (max_offset, max_offset)).reshape(bs, c, max_offset ** 2, h, w)
+        # [N, max_offset^2, H, W]
+        cost_vol = (x1.unsqueeze(2) * patches).mean(dim=1, keepdim=False)
+    else:
+        # slower but save memory
+        cost_vol = []
+        for j in range(0, max_offset):
+            for i in range(0, max_offset):
+                x2_slice = padded_x2[:, :, j:j + h, i:i + w]
+                cost = torch.mean(x1 * x2_slice, dim=1, keepdim=True)
+                cost_vol.append(cost)
+        cost_vol = torch.cat(cost_vol, dim=1)
+
+    cost_vol = F.leaky_relu(cost_vol, 0.1)
+    return cost_vol
+
+class AttentionCostVolume(nn.Module):
+    def __init__(self, search_range=8, out_planes=49):
+        super(AttentionCostVolume, self).__init__()
+        max_offset = search_range * 2 + 1
+        in_planes = max_offset * max_offset
+        self.att = nn.Conv2d(in_planes, in_planes, kernel_size=7, padding=3, groups=in_planes)
+        self.agg = nn.Sequential(
+            Conv(in_planes,in_planes//2,3,1),
+            Conv(in_planes//2,out_planes,3,1)
+        )
+        self.sr = search_range
+
+    def forward(self, f1, f2, normBoth=False):
+        # [N, max_offset^2, H, W]
+        match_vol = cost_volume(f1,f2, self.sr, normBoth, fast=True) 
+        att_vol = match_vol * self.att(match_vol)
+        agg_vol = self.agg(att_vol)
+        # [N, out_planes, H, W]
+        return agg_vol
+    
+if __name__ == '__main__':
+    input1 = torch.randn(1, 512, 32, 32)
+    input2 = torch.randn(1, 512, 32, 32)
+    test_block = AttentionCostVolume(8, 512)
+    output = test_block(input1, input2)
+    print(output.shape)

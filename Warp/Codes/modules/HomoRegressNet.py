@@ -9,14 +9,12 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
 from block import *
 
 class HomoRegressNet(nn.Module):
-    def __init__(self, input_feat_size=[32, 32], spp_pool_size=[1, 2, 4], input_dim=2):
+    def __init__(self):
         super().__init__()
-        self.feat_h  = input_feat_size[0]
-        self.feat_w  = input_feat_size[1]
 
         # 下采样1/8
         self.stage1 = nn.Sequential(
-            nn.Conv2d(2, 64, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1, bias=False),
             nn.ReLU(inplace=True),
             nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
             nn.ReLU(inplace=True),
@@ -68,8 +66,27 @@ class HomoRegressNet(nn.Module):
         x = self.stage2(x) # [N, 8]
         return x.reshape(-1, 4, 2)    # [N, 4, 2]
 
+class HomoRegressNet_SPDConv(HomoRegressNet):
+    def __init__(self):
+        super().__init__()
+        # 下采样1/8
+        self.stage1 = nn.Sequential(
+            nn.Conv2d(2, 64, kernel_size=3, padding=1, bias=False),
+            nn.ReLU(inplace=True),
+            SPDConv(64, 64), # 1/2
+
+            nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=False),
+            nn.ReLU(inplace=True),
+            SPDConv(128, 128), # 1/4
+
+            nn.Conv2d(128, 256, kernel_size=3, padding=1, bias=False),
+            nn.ReLU(inplace=True),
+            SPDConv(256, 256),  # 1/8
+        )
+        super()._initialize_weights()
+
 if __name__ == '__main__':
-    model = HomoRegressNet()
+    model = HomoRegressNet_SPDConv()
     feature = torch.rand(1, 2, 32, 32)
     ouput = model(feature)
     print(ouput.shape)

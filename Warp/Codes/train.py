@@ -67,7 +67,7 @@ def train(args):
     # 开始训练
     for epoch in range(start_epoch, args.max_epoch):
         if epoch < args.warmup_epoch:
-            lr = initial_lr + (target_lr - initial_lr) * (epoch / args.max_epoch)
+            lr = initial_lr + (target_lr - initial_lr) * (epoch / args.warmup_epoch)
             for param_group in optimizer.param_groups:
                 param_group['lr'] = lr
 

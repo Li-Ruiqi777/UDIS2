@@ -14,7 +14,7 @@ class MeshRegressNet(nn.Module):
 
         # 下采样1/16
         self.stage1 = nn.Sequential(
-            nn.Conv2d(32, 64, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(2, 64, kernel_size=3, padding=1, bias=False),
             nn.ReLU(inplace=True),
             nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
             nn.ReLU(inplace=True),

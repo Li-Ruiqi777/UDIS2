@@ -307,22 +307,16 @@ class CCL(nn.Module):
         norm_feature_2 = F.normalize(feature_2, p=2, dim=1)
 
         # stage1 : 计算Correlation Volume
-        patches = self.extract_patches(norm_feature_2) # [N ,C, H, W, K, K]
+        patches = self.extract_patches(norm_feature_2) # [N ,H, W, C, K, K]
         if torch.cuda.is_available():
             patches = patches.cuda()
-
-        matching_filters = patches.reshape(
-            (
-                patches.size()[0],
-                -1,
-                patches.size()[3],
-                patches.size()[4],
-                patches.size()[5],
-            )
-        )
+            
+        # [N, H*W, C, K, K]
+        matching_filters = patches.reshape((patches.size()[0], -1, patches.size()[3], patches.size()[4], patches.size()[5]))
 
         match_vol = []
         for i in range(bs):
+            # input[1, C, H, W], wieght[H*W, C, K, K] --> output[1, H*W, H, W]
             single_match = F.conv2d(norm_feature_1[i].unsqueeze(0), matching_filters[i], padding=1)
             match_vol.append(single_match)
 
@@ -437,7 +431,9 @@ def cost_volume(x1, x2, search_range, normBoth=False, fast=True):
             for i in range(0, max_offset):
                 x2_slice = padded_x2[:, :, j:j + h, i:i + w]
                 cost = torch.mean(x1 * x2_slice, dim=1, keepdim=True)
+                # [N, 1, H, W]
                 cost_vol.append(cost)
+        # [N, max_offset^2, H, W]
         cost_vol = torch.cat(cost_vol, dim=1)
 
     cost_vol = F.leaky_relu(cost_vol, 0.1)
@@ -457,15 +453,55 @@ class AttentionCostVolume(nn.Module):
 
     def forward(self, f1, f2, normBoth=False):
         # [N, max_offset^2, H, W]
-        match_vol = cost_volume(f1,f2, self.sr, normBoth, fast=True) 
+        match_vol = cost_volume(f1,f2, self.sr, normBoth, fast=False) 
         att_vol = match_vol * self.att(match_vol)
         agg_vol = self.agg(att_vol)
         # [N, out_planes, H, W]
         return agg_vol
     
+class AttentionCorrelationVolume(CCL):
+    def __init__(self, in_chs, out_chs):
+        super().__init__()
+
+        self.att = nn.Conv2d(in_chs, in_chs, kernel_size=7, padding=3, groups=in_chs)
+        self.agg = nn.Sequential(
+            Conv(in_chs,in_chs//2,3,1),
+            Conv(in_chs//2,out_chs,3,1)
+        )
+
+    def forward(self, feature_1, feature_2):
+        bs, c, h, w = feature_1.size()
+
+        norm_feature_1 = F.normalize(feature_1, p=2, dim=1)
+        norm_feature_2 = F.normalize(feature_2, p=2, dim=1)
+
+        # stage1 : 计算Correlation Volume
+        patches = self.extract_patches(norm_feature_2) # [N, H, W, C, K, K]
+        if torch.cuda.is_available():
+            patches = patches.cuda()
+            
+        # [N, H*W, C, K, K]
+        matching_filters = patches.reshape((patches.size()[0], -1, patches.size()[3], patches.size()[4], patches.size()[5]))
+
+        match_vol = []
+        for i in range(bs):
+            # input[1, C, H, W], wieght[H*W, C, K, K] --> output[1, H*W, H, W]
+            single_match = F.conv2d(norm_feature_1[i].unsqueeze(0), matching_filters[i], padding=1)
+            match_vol.append(single_match)
+
+        # Correlation Volume: 代表ref上每个path与target上每个patch的匹配程度
+        # 其中的每个像素可以看成一个长度为[H*W]的向量，代表ref上此位置的patch与target上各个patch的匹配程度
+        match_vol = torch.cat(match_vol, 0) # [N, H*W, H, W]
+        att_vol = match_vol * self.att(match_vol)
+        agg_vol = self.agg(att_vol)
+        # [N, out_planes, H, W]
+        return agg_vol
+
 if __name__ == '__main__':
-    input1 = torch.randn(1, 512, 32, 32)
-    input2 = torch.randn(1, 512, 32, 32)
-    test_block = AttentionCostVolume(8, 512)
+    input1 = torch.randn(1, 512, 32, 32).cuda()
+    input2 = torch.randn(1, 512, 32, 32).cuda()
+    # test_block = AttentionCostVolume(8, 512)
+    # test_block = CCL().cuda()
+    test_block = AttentionCorrelationVolume(32*32, out_chs=64).cuda()
     output = test_block(input1, input2)
     print(output.shape)

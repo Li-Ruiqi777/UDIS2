@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+import timm
 import os
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
@@ -101,15 +102,39 @@ class FeatureExtractor_resnet(nn.Module):
 
     def forward(self, x):
         features = []
-        x = self.feature_extractor_stage1(x)
+        x = self.feature_extractor_stage1(x) # [N, 512, H/8, W/8]
         features.append(x)
-        x = self.feature_extractor_stage2(x)
+        x = self.feature_extractor_stage2(x) # [N, 1024, H/16, W/16]
         features.append(x)
         
         return features
 
+class FeatureExtractor_ConvNextTiny(nn.Module):
+    def __init__(self):
+        super().__init__()
+        conextTiny = timm.create_model("convnext_tiny", pretrained=True)
+        
+        self.feature_extractor_stage1 = nn.Sequential(
+            conextTiny.stem,
+            conextTiny.stages[0],  # 对应原ResNet的layer1输出
+            conextTiny.stages[1]   # 对应原ResNet的layer2输出
+        )
+       
+        self.feature_extractor_stage2 = conextTiny.stages[2]
+
+
+    def forward(self, x):
+        features = []
+        x = self.feature_extractor_stage1(x) # [N, 192, H/8, W/8]
+        features.append(x) 
+        x = self.feature_extractor_stage2(x) # [N, 384, H/16, W/16]
+        features.append(x)
+        
+        return features
+
+
 if __name__ == '__main__':
-    model = FeatureExtractor()
+    model = FeatureExtractor_ConvNextTiny()
     # model = FeatureExtractor_resnet()
     input = torch.randn(1, 3, 512, 512)
     features = model(input)  # 得到4个尺度的特征图

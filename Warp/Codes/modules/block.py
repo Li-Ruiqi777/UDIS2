@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import os
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
-from Conv import Conv
+from Conv import *
 from Attention import *
 
 class SPDConv(nn.Module):
@@ -308,8 +308,6 @@ class CCL(nn.Module):
 
         # stage1 : 计算Correlation Volume
         patches = self.extract_patches(norm_feature_2) # [N ,H, W, C, K, K]
-        if torch.cuda.is_available():
-            patches = patches.cuda()
             
         # [N, H*W, C, K, K]
         matching_filters = patches.reshape((patches.size()[0], -1, patches.size()[3], patches.size()[4], patches.size()[5]))
@@ -463,10 +461,9 @@ class AttentionCorrelationVolume(CCL):
     def __init__(self, in_chs, out_chs):
         super().__init__()
 
-        self.att = nn.Conv2d(in_chs, in_chs, kernel_size=7, padding=3, groups=in_chs)
         self.agg = nn.Sequential(
-            Conv(in_chs,in_chs//2,3,1),
-            Conv(in_chs//2,out_chs,3,1)
+            DSConv(in_chs, in_chs//2, k=3),
+            DSConv(in_chs//2, out_chs, k=3),
         )
 
     def forward(self, feature_1, feature_2):
@@ -477,9 +474,7 @@ class AttentionCorrelationVolume(CCL):
 
         # stage1 : 计算Correlation Volume
         patches = self.extract_patches(norm_feature_2) # [N, H, W, C, K, K]
-        if torch.cuda.is_available():
-            patches = patches.cuda()
-            
+
         # [N, H*W, C, K, K]
         matching_filters = patches.reshape((patches.size()[0], -1, patches.size()[3], patches.size()[4], patches.size()[5]))
 
@@ -492,8 +487,7 @@ class AttentionCorrelationVolume(CCL):
         # Correlation Volume: 代表ref上每个path与target上每个patch的匹配程度
         # 其中的每个像素可以看成一个长度为[H*W]的向量，代表ref上此位置的patch与target上各个patch的匹配程度
         match_vol = torch.cat(match_vol, 0) # [N, H*W, H, W]
-        att_vol = match_vol * self.att(match_vol)
-        agg_vol = self.agg(att_vol)
+        agg_vol = self.agg(match_vol)
         # [N, out_planes, H, W]
         return agg_vol
 

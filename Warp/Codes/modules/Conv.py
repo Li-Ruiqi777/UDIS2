@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import math
 
 def autopad(k, p=None, d=1):  # kernel, padding, dilation
     """Pad to 'same' shape outputs."""
@@ -29,3 +30,21 @@ class Conv(nn.Module):
     def forward_fuse(self, x):
         """Perform transposed convolution of 2D data."""
         return self.act(self.conv(x))
+
+class DWConv(Conv):
+    """Depth-wise convolution."""
+
+    def __init__(self, c1, c2, k=1, s=1, d=1, act=True):  # ch_in, ch_out, kernel, stride, dilation, activation
+        """Initialize Depth-wise convolution with given parameters."""
+        super().__init__(c1, c2, k, s, g=math.gcd(c1, c2), d=d, act=act)
+
+class DSConv(nn.Module):
+    """Depthwise Separable Convolution"""
+    def __init__(self, c1, c2, k=1, s=1, d=1, act=True) -> None:
+        super().__init__()
+        
+        self.dwconv = DWConv(c1, c1, 3)
+        self.pwconv = Conv(c1, c2, 1)
+    
+    def forward(self, x):
+        return self.pwconv(self.dwconv(x))

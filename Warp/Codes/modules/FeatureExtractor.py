@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 import timm
 import os
 import sys
@@ -109,6 +110,19 @@ class FeatureExtractor_resnet(nn.Module):
         
         return features
 
+class FeatureExtractor_resnet_fpn(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.resnet50_fpn = resnet_fpn_backbone('resnet50', weights=models.ResNet50_Weights.DEFAULT, trainable_layers=5, returned_layers=[2, 3])
+
+    def forward(self, x):
+        features = []
+        temp = self.resnet50_fpn(x)
+        features.append(temp['0'])
+        features.append(temp['1'])
+
+        return features
+
 class FeatureExtractor_ConvNextTiny(nn.Module):
     def __init__(self):
         super().__init__()
@@ -134,7 +148,7 @@ class FeatureExtractor_ConvNextTiny(nn.Module):
 
 
 if __name__ == '__main__':
-    model = FeatureExtractor_ConvNextTiny()
+    model = FeatureExtractor_resnet_fpn()
     # model = FeatureExtractor_resnet()
     input = torch.randn(1, 3, 512, 512)
     features = model(input)  # 得到4个尺度的特征图

@@ -7,19 +7,11 @@ def build_model(net, warp1_tensor, warp2_tensor, mask1_tensor, mask2_tensor):
 
     out = net(warp1_tensor, warp2_tensor, mask1_tensor, mask2_tensor)
 
-    learned_mask1 = (
-        mask1_tensor - mask1_tensor * mask2_tensor
-    ) + mask1_tensor * mask2_tensor * out
+    learned_mask1 = (mask1_tensor - mask1_tensor * mask2_tensor) + mask1_tensor * mask2_tensor * out
 
-    learned_mask2 = (
-        mask2_tensor - mask1_tensor * mask2_tensor
-    ) + mask1_tensor * mask2_tensor * (1 - out)
+    learned_mask2 = (mask2_tensor - mask1_tensor * mask2_tensor) + mask1_tensor * mask2_tensor * (1 - out)
     
-    stitched_image = (
-        (warp1_tensor + 1.0) * learned_mask1
-        + (warp2_tensor + 1.0) * learned_mask2
-        - 1.0
-    )
+    stitched_image = ((warp1_tensor + 1.0) * learned_mask1 + (warp2_tensor + 1.0) * learned_mask2 - 1.0)
 
     out_dict = {}
     out_dict.update(
@@ -37,17 +29,9 @@ class DownBlock(nn.Module):
         blk = []
         if pool:
             blk.append(nn.MaxPool2d(kernel_size=2, stride=2))
-        blk.append(
-            nn.Conv2d(
-                inchannels, outchannels, kernel_size=3, padding=1, dilation=dilation
-            )
-        )
+        blk.append(nn.Conv2d(inchannels, outchannels, kernel_size=3, padding=1, dilation=dilation))
         blk.append(nn.ReLU(inplace=True))
-        blk.append(
-            nn.Conv2d(
-                outchannels, outchannels, kernel_size=3, padding=1, dilation=dilation
-            )
-        )
+        blk.append(nn.Conv2d(outchannels, outchannels, kernel_size=3, padding=1, dilation=dilation))
         blk.append(nn.ReLU(inplace=True))
         self.layer = nn.Sequential(*blk)
 
@@ -72,13 +56,9 @@ class UpBlock(nn.Module):
         )
 
         self.conv = nn.Sequential(
-            nn.Conv2d(
-                inchannels, outchannels, kernel_size=3, padding=1, dilation=dilation
-            ),
+            nn.Conv2d(inchannels, outchannels, kernel_size=3, padding=1, dilation=dilation),
             nn.ReLU(inplace=True),
-            nn.Conv2d(
-                outchannels, outchannels, kernel_size=3, padding=1, dilation=dilation
-            ),
+            nn.Conv2d(outchannels, outchannels, kernel_size=3, padding=1, dilation=dilation),
             nn.ReLU(inplace=True),
         )
 

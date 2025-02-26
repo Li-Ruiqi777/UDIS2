@@ -315,7 +315,7 @@ class CCL(nn.Module):
         match_vol = []
         for i in range(bs):
             # input[1, C, H, W], wieght[H*W, C, K, K] --> output[1, H*W, H, W]
-            single_match = F.conv2d(norm_feature_1[i].unsqueeze(0), matching_filters[i], padding=1)
+            single_match = F.conv2d(norm_feature_1[i].unsqueeze(0), matching_filters[i], padding=1, dilation=1)
             match_vol.append(single_match)
 
         # correlation volume: 代表ref上每个path与target上每个patch的匹配程度
@@ -495,7 +495,7 @@ if __name__ == '__main__':
     input1 = torch.randn(1, 512, 32, 32).cuda()
     input2 = torch.randn(1, 512, 32, 32).cuda()
     # test_block = AttentionCostVolume(8, 512)
-    # test_block = CCL().cuda()
-    test_block = AttentionCorrelationVolume(32*32, out_chs=64).cuda()
+    test_block = CCL().cuda()
+    # test_block = AttentionCorrelationVolume(32*32, out_chs=64).cuda()
     output = test_block(input1, input2)
     print(output.shape)

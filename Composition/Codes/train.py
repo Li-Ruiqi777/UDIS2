@@ -106,9 +106,7 @@ def train(args):
             # forward, backward, update weights
             optimizer.zero_grad()
 
-            batch_out = build_model(
-                net, warp1_tensor, warp2_tensor, mask1_tensor, mask2_tensor
-            )
+            batch_out = build_model(net, warp1_tensor, warp2_tensor, mask1_tensor, mask2_tensor)
 
             learned_mask1 = batch_out["learned_mask1"]
             learned_mask2 = batch_out["learned_mask2"]

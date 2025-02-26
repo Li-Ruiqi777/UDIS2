@@ -7,6 +7,7 @@ import argparse
 import os
 import numpy as np
 import skimage
+from tqdm import tqdm
 
 from UDIS2 import UDIS2
 from UANet import UANet
@@ -39,7 +40,7 @@ def quantitative_analysis(args):
     # 加载权重
     check_point = torch.load(args.ckpt_path)
     logger.info(f"load model from {args.ckpt_path}!")
-    model.load_state_dict(check_point["model"], strict=True)
+    model.load_state_dict(check_point["model"], strict=False)
 
     # for key in model.state_dict().keys():
     #     print(key)
@@ -47,7 +48,7 @@ def quantitative_analysis(args):
     psnr_list = []
     ssim_list = []
     
-    for i, batch_value in enumerate(test_dataloader):
+    for i, batch_value in tqdm(enumerate(test_dataloader), total=len(test_dataloader), desc="Processing batches"):
 
         inpu1_tesnor = batch_value[0].float().to(device)
         inpu2_tesnor = batch_value[1].float().to(device)
@@ -75,7 +76,7 @@ def quantitative_analysis(args):
             win_size=3
         )
 
-        logger.info(f"i = {i+1}, psnr = {psnr:.6f}")
+        # logger.info(f"i = {i+1}, psnr = {psnr:.6f}")
 
         psnr_list.append(psnr)
         ssim_list.append(ssim)

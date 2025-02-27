@@ -33,7 +33,7 @@ class FPN(nn.Module):
         
         return [p1, p2]
 
-class FeatureExtractor(nn.Module):
+class FeatureExtractor_YOLOFPN(nn.Module):
     def __init__(self):
         super().__init__()
         width = 0.25

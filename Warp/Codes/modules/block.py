@@ -378,7 +378,7 @@ class CCL(nn.Module):
     
 class CCL_ChannelAttention(CCL):
     def __init__(self, in_chs):
-        super(CCL_ChannelAttention, self).__init__()
+        super().__init__()
         self.channel_atten1 = EfficientChannelAttention(in_chs)
         self.channel_atten2 = EfficientChannelAttention(in_chs)
         self._initialize_weights()
@@ -390,7 +390,7 @@ class CCL_ChannelAttention(CCL):
     
 class CCL_LocalWindowAttention(CCL):
     def __init__(self, in_chs):
-        super(CCL_LocalWindowAttention, self).__init__()
+        super().__init__()
         self.atten1 = LocalWindowAttention(in_chs)
         self.atten2 = LocalWindowAttention(in_chs)
         self._initialize_weights()
@@ -398,6 +398,17 @@ class CCL_LocalWindowAttention(CCL):
     def forward(self, feature_1, feature_2):
         feature_1 = self.atten1(feature_1)
         feature_2 = self.atten2(feature_2)
+        return super().forward(feature_1, feature_2)
+    
+class CCL_SimAM(CCL):
+    def __init__(self):
+        super().__init__()
+        self.atten = SimAM()
+        self._initialize_weights()
+
+    def forward(self, feature_1, feature_2):
+        feature_1 = self.atten(feature_1)
+        feature_2 = self.atten(feature_2)
         return super().forward(feature_1, feature_2)
 
 def cost_volume(x1, x2, search_range, normBoth=False, fast=True):
@@ -495,7 +506,7 @@ if __name__ == '__main__':
     input1 = torch.randn(1, 512, 32, 32).cuda()
     input2 = torch.randn(1, 512, 32, 32).cuda()
     # test_block = AttentionCostVolume(8, 512)
-    test_block = CCL().cuda()
+    test_block = CCL_SimAM().cuda()
     # test_block = AttentionCorrelationVolume(32*32, out_chs=64).cuda()
     output = test_block(input1, input2)
     print(output.shape)

@@ -14,11 +14,11 @@ device = utils.constant.device
 class UANet(nn.Module):
     def __init__(self):
         super(UANet, self).__init__()
-        self.feature_extractor = FeatureExtractor_resnet_fpn()
+        self.feature_extractor = FeatureExtractor_resnet()
         self.homo_regress_net = HomoRegressNet()
         self.mesh_regress_net = MeshRegressNet([gird_h, gird_w])
-        self.CCL1 = CCL()
-        self.CCL2 = CCL()
+        self.CCL1 = CCL_SimAM()
+        self.CCL2 = CCL_SimAM()
 
     def forward(self, ref_tensor, target_tensor):
         batch_size, _, img_h, img_w = ref_tensor.size()
